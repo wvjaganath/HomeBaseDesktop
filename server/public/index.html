@@ -1,0 +1,551 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>My Weight Loss Journey Tracker</title>
+<style>
+:root {
+  --bg: #f5f7fa;
+  --surface: #ffffff;
+  --text: #1a2130;
+  --muted: #667085;
+  --border: #e2e6ec;
+  --primary: #2f6f4f;
+  --primary-dark: #234f38;
+  --accent: #3b82c4;
+  --danger: #b3423a;
+  --radius: 10px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #14181f;
+    --surface: #1d232c;
+    --text: #e7ebf1;
+    --muted: #9aa5b4;
+    --border: #2b323d;
+    --primary: #4caf82;
+    --primary-dark: #3c8c68;
+    --accent: #6ab0f0;
+    --danger: #e0776e;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #14181f; --surface: #1d232c; --text: #e7ebf1; --muted: #9aa5b4;
+  --border: #2b323d; --primary: #4caf82; --primary-dark: #3c8c68; --accent: #6ab0f0; --danger: #e0776e;
+}
+:root[data-theme="light"] {
+  --bg: #f5f7fa; --surface: #ffffff; --text: #1a2130; --muted: #667085;
+  --border: #e2e6ec; --primary: #2f6f4f; --primary-dark: #234f38; --accent: #3b82c4; --danger: #b3423a;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.app-header {
+  padding: 24px 20px 12px;
+  text-align: center;
+}
+.app-header h1 { margin: 0 0 4px; font-size: 1.6rem; }
+.tagline { margin: 0; color: var(--muted); font-size: 0.95rem; }
+
+.tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: center;
+  padding: 10px;
+  position: sticky;
+  top: 0;
+  background: var(--bg);
+  z-index: 10;
+  border-bottom: 1px solid var(--border);
+}
+.tab-btn {
+  padding: 8px 14px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  border-radius: 999px;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+.tab-btn.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+
+main { max-width: 960px; margin: 0 auto; padding: 16px 16px 60px; }
+
+.tab-panel { display: none; }
+.tab-panel.active { display: block; }
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 18px;
+  margin-bottom: 16px;
+}
+.card h3 { margin-top: 0; }
+
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.stat-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.stat-label { font-size: 0.78rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.03em; }
+.stat-value { font-size: 1.4rem; font-weight: 700; }
+
+.goal-label { margin: 0 0 8px; font-weight: 600; }
+.progress-track {
+  background: var(--border);
+  border-radius: 999px;
+  height: 14px;
+  overflow: hidden;
+}
+.progress-fill {
+  background: linear-gradient(90deg, var(--primary), var(--accent));
+  height: 100%;
+  width: 0%;
+  transition: width 0.3s ease;
+}
+
+.chart-container { width: 100%; }
+.chart-grid { stroke: var(--border); stroke-width: 1; }
+.chart-axis-label { fill: var(--muted); font-size: 11px; }
+.chart-axis-label.goal { fill: var(--accent); }
+.chart-goal-line { stroke: var(--accent); stroke-width: 1.5; stroke-dasharray: 5 4; }
+.chart-line { stroke: var(--primary); stroke-width: 2.5; }
+.chart-point { fill: var(--primary); }
+
+.inline-form { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; }
+.inline-form label, .block-label {
+  display: flex;
+  flex-direction: column;
+  font-size: 0.82rem;
+  color: var(--muted);
+  gap: 4px;
+}
+.block-label { margin: 10px 0; }
+input, select {
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 0.92rem;
+}
+
+button { font-family: inherit; cursor: pointer; }
+.btn-primary, .btn-secondary, .btn-danger {
+  padding: 9px 16px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  font-size: 0.9rem;
+}
+.btn-primary { background: var(--primary); color: #fff; }
+.btn-primary:hover { background: var(--primary-dark); }
+.btn-secondary { background: var(--surface); color: var(--text); border-color: var(--border); }
+.btn-danger { background: var(--surface); color: var(--danger); border-color: var(--danger); }
+.btn-small { padding: 5px 10px; font-size: 0.8rem; }
+.btn-link {
+  background: none; border: none; color: var(--accent); padding: 2px 4px; font-size: 0.85rem;
+}
+.btn-link.danger { color: var(--danger); }
+.hidden { display: none !important; }
+
+.data-table { width: 100%; border-collapse: collapse; }
+.data-table th, .data-table td {
+  text-align: left;
+  padding: 8px 6px;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.9rem;
+}
+.row-actions { white-space: nowrap; }
+.empty-hint { color: var(--muted); font-style: italic; }
+
+.exercise-checklist { display: flex; flex-direction: column; gap: 8px; margin: 10px 0; }
+.exercise-check { display: flex; align-items: center; gap: 8px; font-size: 0.9rem; }
+.exercise-check .ex-note { flex: 1; max-width: 220px; }
+
+.workout-session { border-bottom: 1px solid var(--border); padding: 10px 0; }
+.workout-session:last-child { border-bottom: none; }
+.workout-session-header { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.workout-session ul { margin: 6px 0; padding-left: 20px; }
+
+.filter-bar { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
+.filter-btn {
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.85rem;
+}
+.filter-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+#library-search { flex: 1; min-width: 180px; }
+
+.exercise-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 12px;
+}
+.exercise-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px;
+  background: var(--bg);
+}
+.exercise-card-header { display: flex; justify-content: space-between; align-items: start; gap: 8px; }
+.exercise-card-header h4 { margin: 0; font-size: 1rem; }
+.exercise-meta { font-size: 0.82rem; color: var(--muted); margin: 6px 0; }
+.badge {
+  font-size: 0.7rem; padding: 2px 8px; border-radius: 999px;
+  background: var(--border); color: var(--text); white-space: nowrap;
+}
+.badge-advanced { background: var(--danger); color: #fff; }
+.badge-intermediate { background: var(--accent); color: #fff; }
+.badge-beginner { background: var(--primary); color: #fff; }
+.howto { margin-top: 8px; font-size: 0.85rem; }
+.howto ol { padding-left: 18px; margin: 6px 0; }
+.howto a { color: var(--accent); }
+
+.plan-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+}
+.plan-card { border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; background: var(--bg); }
+.plan-card-header { display: flex; justify-content: space-between; align-items: center; }
+.plan-card-header h4 { margin: 0; }
+.plan-type { font-size: 0.75rem; color: var(--accent); font-weight: 600; }
+.plan-exercise-list { padding-left: 18px; margin: 8px 0; font-size: 0.85rem; }
+.muted { color: var(--muted); font-size: 0.85rem; }
+
+.week-tracker { display: flex; flex-wrap: wrap; gap: 10px; }
+.day-check {
+  display: flex; align-items: center; gap: 6px;
+  border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; font-size: 0.85rem;
+}
+.day-check.today { border-color: var(--primary); font-weight: 600; }
+
+.disclaimer p { color: var(--muted); font-size: 0.85rem; line-height: 1.5; }
+
+.login-screen {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+.login-card { width: 100%; max-width: 360px; }
+.login-card form { display: flex; flex-direction: column; gap: 12px; }
+.login-card label { display: flex; flex-direction: column; gap: 4px; font-size: 0.85rem; color: var(--muted); }
+
+@media (max-width: 600px) {
+  .inline-form { flex-direction: column; align-items: stretch; }
+  .stat-grid { grid-template-columns: repeat(2, 1fr); }
+}
+</style>
+</head>
+<body>
+
+<div id="login-screen" class="login-screen">
+  <div class="card login-card">
+    <h2>Sign in</h2>
+    <p class="muted">Sign in with your HomeBase account to sync this tracker.</p>
+    <form id="login-form">
+      <label>Email <input type="email" id="login-email" required autocomplete="username"></label>
+      <label>Password <input type="password" id="login-password" required autocomplete="current-password"></label>
+      <button type="submit" class="btn-primary">Sign in</button>
+    </form>
+    <p id="login-error" class="muted" style="color: var(--danger);"></p>
+  </div>
+</div>
+
+<div id="app-root" class="hidden">
+
+<header class="app-header">
+  <h1>My Weight Loss Journey</h1>
+  <p class="tagline">Home-gym tracker — treadmill, dumbbells &amp; bench. Already down 50 lbs, keep going.</p>
+</header>
+
+<nav class="tabs">
+  <button class="tab-btn active" data-tab="dashboard">Dashboard</button>
+  <button class="tab-btn" data-tab="weightlog">Weight Log</button>
+  <button class="tab-btn" data-tab="workouts">Workouts</button>
+  <button class="tab-btn" data-tab="library">Exercise Library</button>
+  <button class="tab-btn" data-tab="plan">Weekly Plan</button>
+  <button class="tab-btn" data-tab="nutrition">Nutrition</button>
+  <button class="tab-btn" data-tab="settings">Settings</button>
+</nav>
+
+<main>
+
+  <!-- DASHBOARD -->
+  <section id="tab-dashboard" class="tab-panel active">
+    <div class="stat-grid">
+      <div class="stat-card">
+        <span class="stat-label">Current Weight</span>
+        <span class="stat-value" id="stat-current-weight">—</span>
+      </div>
+      <div class="stat-card">
+        <span class="stat-label">Total Lost</span>
+        <span class="stat-value" id="stat-total-lost">—</span>
+      </div>
+      <div class="stat-card">
+        <span class="stat-label">BMI</span>
+        <span class="stat-value" id="stat-bmi">—</span>
+      </div>
+      <div class="stat-card">
+        <span class="stat-label">This Week</span>
+        <span class="stat-value" id="stat-week-change">—</span>
+      </div>
+      <div class="stat-card">
+        <span class="stat-label">Streak</span>
+        <span class="stat-value" id="stat-streak">—</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <p id="goal-progress-label" class="goal-label">—</p>
+      <div class="progress-track"><div id="goal-progress-bar" class="progress-fill"></div></div>
+    </div>
+
+    <div class="card">
+      <h3>Weight Trend</h3>
+      <div id="weight-chart" class="chart-container"></div>
+    </div>
+  </section>
+
+  <!-- WEIGHT LOG -->
+  <section id="tab-weightlog" class="tab-panel">
+    <div class="card">
+      <h3>Log a Weigh-In</h3>
+      <form id="weight-form" class="inline-form">
+        <label>Date <input type="date" id="weight-date" required></label>
+        <label>Weight (lbs) <input type="number" id="weight-value" step="0.1" min="1" required></label>
+        <label>Note <input type="text" id="weight-note" placeholder="optional"></label>
+        <button type="submit" id="weight-submit-btn" class="btn-primary">Add Entry</button>
+        <button type="button" id="weight-cancel-edit" class="btn-secondary hidden">Cancel</button>
+      </form>
+    </div>
+    <div class="card">
+      <h3>History</h3>
+      <table class="data-table">
+        <thead><tr><th>Date</th><th>Weight</th><th>BMI</th><th>Note</th><th></th></tr></thead>
+        <tbody id="weight-table-body"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- WORKOUTS -->
+  <section id="tab-workouts" class="tab-panel">
+    <div class="card">
+      <h3>Log a Workout</h3>
+      <form id="workout-form">
+        <div class="inline-form">
+          <label>Date <input type="date" id="workout-date" required></label>
+          <label>Day Template
+            <select id="workout-day-select">
+              <option>Monday</option>
+              <option>Tuesday</option>
+              <option>Wednesday</option>
+              <option>Thursday</option>
+              <option>Friday</option>
+              <option>Saturday</option>
+              <option>Sunday</option>
+              <option>Custom</option>
+            </select>
+          </label>
+          <label>Duration (min) <input type="number" id="workout-duration" min="0" placeholder="optional"></label>
+        </div>
+        <p class="muted">Check off each exercise you completed, with an optional note (sets/reps/weight):</p>
+        <div id="workout-exercise-list" class="exercise-checklist"></div>
+        <label class="block-label">Session note <input type="text" id="workout-note" placeholder="optional"></label>
+        <button type="submit" class="btn-primary">Save Workout</button>
+      </form>
+    </div>
+    <div class="card">
+      <h3>History</h3>
+      <div id="workout-history-list"></div>
+    </div>
+  </section>
+
+  <!-- EXERCISE LIBRARY -->
+  <section id="tab-library" class="tab-panel">
+    <div class="card">
+      <div class="filter-bar">
+        <button class="filter-btn active" data-filter="all">All</button>
+        <button class="filter-btn" data-filter="cardio">Cardio (Treadmill)</button>
+        <button class="filter-btn" data-filter="bodyweight">Bodyweight</button>
+        <button class="filter-btn" data-filter="dumbbell">Dumbbell</button>
+        <button class="filter-btn" data-filter="bench">Bench</button>
+        <input type="text" id="library-search" placeholder="Search by name or muscle...">
+      </div>
+      <div id="library-grid" class="exercise-grid"></div>
+    </div>
+  </section>
+
+  <!-- WEEKLY PLAN -->
+  <section id="tab-plan" class="tab-panel">
+    <div class="card">
+      <h3>Default Weekly Split</h3>
+      <p class="muted">Click a day to see its exercise list. Edit the underlying plan by editing <code>js/exercises.js</code> if you want to change it.</p>
+      <div id="plan-grid" class="plan-grid"></div>
+    </div>
+    <div class="card">
+      <h3>This Week — Mark Days Complete</h3>
+      <p class="muted">Days are marked done automatically once you log a workout for them — this drives the streak counter on the Dashboard.</p>
+      <div id="week-tracker" class="week-tracker"></div>
+    </div>
+  </section>
+
+  <!-- NUTRITION -->
+  <section id="tab-nutrition" class="tab-panel">
+    <div class="stat-grid">
+      <div class="stat-card">
+        <span class="stat-label">Calories today</span>
+        <span class="stat-value" id="nutri-stat-calories">—</span>
+      </div>
+      <div class="stat-card">
+        <span class="stat-label">Protein</span>
+        <span class="stat-value" id="nutri-stat-protein">—</span>
+      </div>
+      <div class="stat-card">
+        <span class="stat-label">Carbs</span>
+        <span class="stat-value" id="nutri-stat-carbs">—</span>
+      </div>
+      <div class="stat-card">
+        <span class="stat-label">Fat</span>
+        <span class="stat-value" id="nutri-stat-fat">—</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Log a Meal</h3>
+      <form id="meal-form" class="inline-form">
+        <label>Date <input type="date" id="meal-date" required></label>
+        <label>Meal
+          <select id="meal-type">
+            <option value="breakfast">Breakfast</option>
+            <option value="lunch">Lunch</option>
+            <option value="dinner">Dinner</option>
+            <option value="snack">Snack</option>
+          </select>
+        </label>
+        <label>From recipe
+          <select id="meal-recipe-select">
+            <option value="">— custom item —</option>
+          </select>
+        </label>
+      </form>
+      <form id="meal-form-2" class="inline-form" style="margin-top:10px;">
+        <label>Name <input type="text" id="meal-name" placeholder="e.g. Tandoori Chicken" required></label>
+        <label>Calories <input type="number" id="meal-calories" min="0" required></label>
+        <label>Protein (g) <input type="number" id="meal-protein" min="0"></label>
+        <label>Carbs (g) <input type="number" id="meal-carbs" min="0"></label>
+        <label>Fat (g) <input type="number" id="meal-fat" min="0"></label>
+        <label>Note <input type="text" id="meal-note" placeholder="optional"></label>
+        <button type="submit" id="meal-submit-btn" class="btn-primary">Add Meal</button>
+        <button type="button" id="meal-cancel-edit" class="btn-secondary hidden">Cancel</button>
+      </form>
+    </div>
+
+    <div class="card">
+      <h3>Today's Meals</h3>
+      <div id="meal-today-list"></div>
+    </div>
+
+    <div class="card">
+      <h3>Nutrition Targets</h3>
+      <form id="nutrition-targets-form" class="inline-form">
+        <label>Calories <input type="number" id="target-calories" min="0"></label>
+        <label>Protein (g) <input type="number" id="target-protein" min="0"></label>
+        <label>Carbs (g) <input type="number" id="target-carbs" min="0"></label>
+        <label>Fat (g) <input type="number" id="target-fat" min="0"></label>
+        <button type="submit" class="btn-primary">Save</button>
+      </form>
+      <p class="muted">Starting estimate for ~1.25 lb/week loss at your current stats and activity level. Re-check after 2-3 weeks of real weigh-ins and adjust ±100-150 kcal if the trend doesn't match your goal pace.</p>
+    </div>
+
+    <div class="card">
+      <h3>Recipe Library</h3>
+      <div class="filter-bar">
+        <button class="recipe-filter-btn active" data-recipe-filter="all">All</button>
+        <button class="recipe-filter-btn" data-recipe-filter="breakfast">Breakfast</button>
+        <button class="recipe-filter-btn" data-recipe-filter="lunch">Lunch</button>
+        <button class="recipe-filter-btn" data-recipe-filter="dinner">Dinner</button>
+        <button class="recipe-filter-btn" data-recipe-filter="snack">Snack</button>
+        <input type="text" id="recipe-search" placeholder="Search recipes...">
+      </div>
+      <div id="recipe-grid" class="exercise-grid"></div>
+    </div>
+
+    <div class="card">
+      <h3>Meal History</h3>
+      <div id="meal-history-list"></div>
+    </div>
+  </section>
+
+  <!-- SETTINGS -->
+  <section id="tab-settings" class="tab-panel">
+    <div class="card">
+      <h3>Profile &amp; Goals</h3>
+      <form id="settings-form" class="inline-form">
+        <label>Starting Weight (lbs) <input type="number" id="settings-start-weight" step="0.1"></label>
+        <label>Height <input type="text" id="settings-height" readonly></label>
+        <label>Goal 1 <input type="number" id="settings-goal1" step="0.1"></label>
+        <label>Goal 2 <input type="number" id="settings-goal2" step="0.1"></label>
+        <label>Goal 3 <input type="number" id="settings-goal3" step="0.1"></label>
+        <label>Goal 4 <input type="number" id="settings-goal4" step="0.1"></label>
+        <button type="submit" class="btn-primary">Save</button>
+      </form>
+      <p id="settings-message" class="muted"></p>
+    </div>
+
+    <div class="card">
+      <h3>Backup &amp; Data</h3>
+      <p class="muted">All data lives in this browser's local storage only. Export a backup regularly, especially before clearing browser data.</p>
+      <div class="inline-form">
+        <button id="export-btn" class="btn-secondary">Export Backup (JSON)</button>
+        <input type="file" id="import-file" accept="application/json">
+        <button id="import-btn" class="btn-secondary">Import Backup</button>
+        <button id="reset-btn" class="btn-danger">Reset All Data</button>
+        <button id="signout-btn" class="btn-secondary">Sign Out</button>
+      </div>
+    </div>
+
+    <div class="card disclaimer">
+      <h3>Disclaimer</h3>
+      <p>This tracker and plan are for personal motivation and organization only, not medical advice. Talk to a physician before starting any new exercise program, particularly given higher body weight and joint load. Stop immediately and seek medical attention for chest pain, dizziness, shortness of breath beyond normal exertion, or joint pain that doesn't resolve with rest.</p>
+    </div>
+  </section>
+
+</main>
+
+</div>
+
+<script src="js/exercises.js"></script>
+<script src="js/recipes.js"></script>
+<script src="js/api.js"></script>
+<script src="js/storage.js"></script>
+<script src="js/chart.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
