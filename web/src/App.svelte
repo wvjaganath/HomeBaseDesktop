@@ -11,12 +11,15 @@
   import Flights from './screens/Flights.svelte';
   import Home from './screens/Home.svelte';
   import Login from './screens/Login.svelte';
-  import Radar from './screens/Radar.svelte';
   import Settings from './screens/Settings.svelte';
+
+  // Radar (and Leaflet) load only when the tab is opened (README §6.7 budget).
+  const loadRadar = () => import('./screens/Radar.svelte');
 
   type Phase = 'loading' | 'login' | 'unpaired' | 'ready' | 'offline';
   let phase = $state<Phase>('loading');
-  let idle = $state(false);
+  // Kiosk starts with the cursor and tab rail hidden until the mouse moves.
+  let idle = $state(true);
   let idleTimer: ReturnType<typeof setTimeout> | null = null;
 
   const device = $derived(hub.me?.kind === 'device' ? hub.me.device : null);
@@ -122,7 +125,11 @@
       {:else if route === 'flights'}
         <Flights theme={settings?.boardTheme ?? 'led'} />
       {:else if route === 'radar'}
-        <Radar />
+        {#await loadRadar() then { default: Radar }}
+          <Radar />
+        {:catch}
+          <div class="center muted">Couldn’t load the radar.</div>
+        {/await}
       {:else if route === 'calendar'}
         <CalendarPage />
       {:else if route === 'settings' && !device}

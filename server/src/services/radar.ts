@@ -173,34 +173,36 @@ export class RadarService {
 
     for (const item of list.slice(0, 500)) {
       const r = acSchema.safeParse(item);
-      if (!r.success || r.data.lat === undefined || r.data.lon === undefined) continue;
+      if (!r.success) continue;
       const a = r.data;
+      const { lat, lon } = a;
+      if (lat === undefined || lon === undefined) continue;
       if (a.seen_pos !== undefined && a.seen_pos > 60) continue;
       const hex = a.hex.replace('~', '').toLowerCase();
       seen.add(hex);
 
       const trail = this.trails.get(hex) ?? [];
       const last = trail.at(-1);
-      if (!last || last.lat !== a.lat || last.lon !== a.lon) trail.push({ lat: a.lat, lon: a.lon, t: now });
+      if (!last || last.lat !== lat || last.lon !== lon) trail.push({ lat, lon, t: now });
       while (trail.length > 0 && now - (trail[0]?.t ?? now) > TRAIL_MS) trail.shift();
       this.trails.set(hex, trail);
 
-      const miles = haversineMiles(this.env.HOME_LAT, this.env.HOME_LON, a.lat, a.lon);
+      const miles = haversineMiles(this.env.HOME_LAT, this.env.HOME_LON, lat, lon);
       aircraft.push({
         hex,
         callsign: (a.flight ?? '').trim().toUpperCase(),
         registration: (a.r ?? '').trim().toUpperCase(),
         type: (a.t ?? '').trim().toUpperCase(),
         category: a.category ?? '',
-        lat: a.lat,
-        lon: a.lon,
+        lat,
+        lon,
         altitudeFt: a.alt_baro === 'ground' ? null : (a.alt_baro ?? a.alt_geom ?? null),
         groundSpeedKt: a.gs ?? null,
         trackDeg: a.track ?? a.true_heading ?? null,
         verticalFpm: a.baro_rate ?? a.geom_rate ?? null,
         squawk: a.squawk ?? '',
         distance: Math.round(milesTo(this.env.UNITS, miles) * 10) / 10,
-        direction: cardinal(bearingDeg(this.env.HOME_LAT, this.env.HOME_LON, a.lat, a.lon)),
+        direction: cardinal(bearingDeg(this.env.HOME_LAT, this.env.HOME_LON, lat, lon)),
         trail: trail.map((pt) => [Number(pt.lat.toFixed(5)), Number(pt.lon.toFixed(5))] as [number, number]),
       });
     }

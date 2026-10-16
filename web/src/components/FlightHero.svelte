@@ -93,8 +93,10 @@
 
 <style>
   .hero {
+    flex: 1;
     display: flex;
     flex-direction: column;
+    justify-content: space-evenly;
     gap: 30px;
     min-height: 0;
   }
@@ -126,8 +128,8 @@
   }
   .route {
     display: grid;
-    grid-template-columns: minmax(240px, auto) minmax(0, 1fr) minmax(240px, auto);
-    gap: 36px;
+    grid-template-columns: auto minmax(300px, 1fr) auto;
+    gap: 32px;
     align-items: center;
   }
   .end {
@@ -140,9 +142,9 @@
     text-align: right;
   }
   .code {
-    font-size: 176px;
+    font-size: 144px;
     font-weight: 700;
-    letter-spacing: -6px;
+    letter-spacing: -5px;
     line-height: 0.82;
   }
   .board .code {

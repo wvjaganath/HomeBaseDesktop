@@ -85,7 +85,7 @@ export async function safeFetch(rawUrl: string, opts: SafeFetchOptions): Promise
   const declared = Number(res.headers.get('content-length') ?? '0');
   if (declared > max) throw new FetchError('response too large');
 
-  const reader = res.body?.getReader();
+  const reader = (res.body as ReadableStream<Uint8Array> | null)?.getReader();
   const chunks: Uint8Array[] = [];
   let total = 0;
   if (reader) {

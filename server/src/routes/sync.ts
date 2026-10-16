@@ -2,7 +2,6 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { nextSeq, currentSeq } from '../db.js';
 import { pushSchema, pullQuerySchema, collectionPayloads, shareableCollections } from '../schemas.js';
-import type { CollectionName } from '../schemas.js';
 
 interface ItemRow {
   collection: string;
@@ -69,7 +68,7 @@ export default async function syncRoutes(app: FastifyInstance): Promise<void> {
         if (existing) {
           ownerId = existing.owner_id;
           const sharedWrite =
-            shareableCollections.includes(change.collection as CollectionName) &&
+            shareableCollections.includes(change.collection) &&
             getWriteShare.get(change.collection, change.id, me) !== undefined;
           if (ownerId !== me && !sharedWrite) {
             results.push({ collection: change.collection, id: change.id, status: 'forbidden' });

@@ -11,15 +11,10 @@ ARG NODE_IMAGE=node:26-bookworm-slim
 # ---- build ---------------------------------------------------------------
 FROM ${NODE_IMAGE} AS build
 WORKDIR /src
-# Toolchain only as a fallback in case a native module has no prebuilt binary.
-RUN apt-get update \
- && apt-get install -y --no-install-recommends python3 make g++ ca-certificates \
- && rm -rf /var/lib/apt/lists/*
-
+# No compiler toolchain: better-sqlite3, argon2 and sharp ship prebuilt binaries
+# inside their npm packages, and install scripts stay disabled (.npmrc).
 COPY server/package.json server/package-lock.json server/.npmrc server/
-RUN cd server \
- && npm ci \
- && npm rebuild --ignore-scripts=false better-sqlite3 argon2
+RUN cd server && npm ci
 
 COPY web/package.json web/package-lock.json web/.npmrc web/
 RUN cd web && npm ci

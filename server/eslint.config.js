@@ -16,6 +16,9 @@ export default tseslint.config(
     rules: {
       '@typescript-eslint/restrict-template-expressions': ['error', { allowNumber: true }],
       '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
+      // Fastify plugins and handlers are async by contract even without an await.
+      '@typescript-eslint/require-await': 'off',
+      '@typescript-eslint/no-confusing-void-expression': ['error', { ignoreArrowShorthand: true }],
       // Object lookups here are keyed by validated enums; the rule is noisy for that pattern.
       'security/detect-object-injection': 'off',
       // Paths are built from validated codes under fixed roots (see routes/logos.ts).
@@ -24,6 +27,6 @@ export default tseslint.config(
   },
   {
     files: ['test/**/*.ts'],
-    rules: { '@typescript-eslint/no-unsafe-member-access': 'off', '@typescript-eslint/no-unsafe-assignment': 'off', '@typescript-eslint/no-unsafe-argument': 'off' },
+    rules: { '@typescript-eslint/no-unsafe-member-access': 'off', '@typescript-eslint/no-unsafe-assignment': 'off', '@typescript-eslint/no-unsafe-argument': 'off', '@typescript-eslint/no-unsafe-call': 'off' },
   },
 );

@@ -19,8 +19,8 @@ const envSchema = z.object({
     .min(32, 'JWT_SECRET must be at least 32 characters. Generate one with: openssl rand -hex 32'),
   SECRETS_KEY: z
     .string()
-    .regex(/^([0-9a-fA-F]{64})?$/, 'SECRETS_KEY must be 64 hex characters (openssl rand -hex 32) or empty')
-    .default(''),
+    .default('')
+    .refine((v) => v === '' || /^[0-9a-fA-F]{64}$/.test(v), 'SECRETS_KEY must be 64 hex characters (openssl rand -hex 32) or empty'),
   ALLOW_REGISTRATION: bool.default(true),
   ACCESS_TOKEN_TTL_MIN: z.coerce.number().int().min(1).max(60).default(15),
   REFRESH_TOKEN_TTL_DAYS: z.coerce.number().int().min(1).max(90).default(30),

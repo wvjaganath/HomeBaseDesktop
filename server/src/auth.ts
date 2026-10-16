@@ -57,6 +57,8 @@ export class AuthService {
 
   async verifyPassword(hash: string | undefined, password: string): Promise<boolean> {
     try {
+      // Comparing to undefined (unknown user), not to a secret.
+      // eslint-disable-next-line security/detect-possible-timing-attacks
       if (hash === undefined) {
         dummyHash ??= argon2.hash('not-a-real-password-homebase', ARGON2_OPTIONS);
         await argon2.verify(await dummyHash, password);

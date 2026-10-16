@@ -3,15 +3,16 @@
 Runbook for the Linux PC (hub) and the Raspberry Pi 3 B (screen). Every step is
 written to follow README §7 (security standards).
 
-## 0. One-time: dependencies and lockfiles
+## 0. Dependencies (already pinned)
 
-On a machine with npm registry access and Node 24.11+ (ideally Node 26):
+Lockfiles are committed, so builds use `npm ci` with exact versions. To update
+(weekly, or immediately for a security fix), on a machine with Node 24.11+:
 
 ```bash
 ./scripts/update-deps.sh      # latest versions ≥7 days old, exact pins, audit gate
-cd server && npm test && npm run typecheck && npm run lint && cd ..
+cd server && npm run typecheck && npm run lint && npm test && cd ..
 cd web && npm run check && npm run lint && npm run build && cd ..
-git add server/package*.json web/package*.json && git commit -m "Pin dependencies"
+git add server/package*.json web/package*.json && git commit -m "Update dependencies"
 ```
 
 `npm audit --omit=dev --audit-level=high` must report **0 high/critical**.

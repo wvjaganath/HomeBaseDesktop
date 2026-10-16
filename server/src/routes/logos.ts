@@ -81,7 +81,7 @@ export default async function logoRoutes(app: FastifyInstance): Promise<void> {
         });
         reply.header('x-logo-source', 'tracker');
         if (!res.bodyBuffer.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) throw new Error('not a png');
-        return reply.type('image/png').send(res.bodyBuffer);
+        return await reply.type('image/png').send(res.bodyBuffer);
       } catch {
         // fall through
       }

@@ -318,6 +318,9 @@
   .error {
     color: var(--bad);
   }
+  section > .btn {
+    align-self: flex-start;
+  }
   .toast {
     padding: 12px 16px;
     border-radius: 12px;

@@ -54,6 +54,8 @@
   });
 
   const byDay = $derived.by(() => {
+    // Rebuilt from scratch on each change; never mutated afterwards.
+    // eslint-disable-next-line svelte/prefer-svelte-reactivity
     const map = new Map<string, CalendarEvent[]>();
     for (const day of grid.days) map.set(day.ymd, []);
     for (const ev of events) {

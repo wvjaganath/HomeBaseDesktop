@@ -7,6 +7,8 @@
     photographer: string;
   }
   // In-memory only (Planespotters allows caching the JSON, never the images).
+  // Deliberately non-reactive: it's a request cache, not UI state.
+  // eslint-disable-next-line svelte/prefer-svelte-reactivity
   const cache = new Map<string, Promise<Photo | null>>();
 
   function isHttps(u: unknown): u is string {

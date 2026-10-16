@@ -5,7 +5,7 @@ import cookie from '@fastify/cookie';
 import helmet from '@fastify/helmet';
 import rateLimit from '@fastify/rate-limit';
 import fastifyStatic from '@fastify/static';
-import Fastify, { type FastifyInstance } from 'fastify';
+import Fastify, { type FastifyInstance, type FastifyServerOptions } from 'fastify';
 import { createContext, type AppContext } from './context.js';
 import { openDb } from './db.js';
 import type { Env } from './env.js';
@@ -31,7 +31,7 @@ export interface BuildOptions {
 
 export async function buildApp(opts: BuildOptions): Promise<FastifyInstance> {
   const { env } = opts;
-  const app = Fastify({
+  const serverOptions: FastifyServerOptions = {
     trustProxy: env.TRUST_PROXY,
     bodyLimit: 256 * 1024,
     logger: env.isTest
@@ -44,14 +44,17 @@ export async function buildApp(opts: BuildOptions): Promise<FastifyInstance> {
           },
           serializers: {
             // Never log query strings: the kiosk pairing link carries a token.
-            req: (req: { method: string; url: string; ip?: string }) => ({
+            req: (req) => ({
               method: req.method,
-              url: req.url.split('?')[0],
-              ip: req.ip,
+              url: req.url.split('?')[0] ?? '',
+              hostname: req.hostname,
+              remoteAddress: req.ip,
+              remotePort: req.socket.remotePort ?? 0,
             }),
           },
         },
-  });
+  };
+  const app: FastifyInstance = Fastify(serverOptions);
 
   const db = openDb(env.dbPath);
   const ctx: AppContext = createContext(env, db, app.log);
@@ -135,9 +138,9 @@ export async function buildApp(opts: BuildOptions): Promise<FastifyInstance> {
       index: ['index.html'],
       maxAge: '1h',
       // Hashed asset filenames can be cached forever; index.html must revalidate.
-      setHeaders: (res, filePath) => {
-        if (filePath.includes(`${path.sep}assets${path.sep}`)) res.setHeader('cache-control', 'public, max-age=31536000, immutable');
-        if (filePath.endsWith('index.html')) res.setHeader('cache-control', 'no-cache');
+      setHeaders: (reply, filePath) => {
+        if (filePath.includes(`${path.sep}assets${path.sep}`)) void reply.header('cache-control', 'public, max-age=31536000, immutable');
+        if (filePath.endsWith('index.html')) void reply.header('cache-control', 'no-cache');
       },
     });
   } else {

@@ -227,26 +227,26 @@ Checked 2026-10-16 against each project's GitHub release tags. Re-check at the s
 | Component | Version to use | Notes |
 |---|---|---|
 | Node.js | **26.x** (26.12.0 today) | Enters LTS this month (October 2026); supported until April 2029. Node 24 (24.22.0) is the fallback if a native module lags. MagicMirror supports both. |
-| fastify | 5.12.7 | The current server runs 5.8.5. There have been several 2026 advisories in the 5.x line (body/schema validation bypasses); fixes are in later 5.x releases. |
+| fastify | 5.12.5 (pinned) | The 7-day cooling-off rule picked 5.12.5 over 5.12.7 (published this week); audit and OSV both clean. The old server ran 5.8.5. |
 | @fastify/static | 10.1.6 | The current server runs **8.3.0**. 2026 path-traversal / route-guard-bypass advisories (e.g. CVE-2026-15074, high) are fixed in 10.1.x. |
 | @fastify/http-proxy | 11.6.4 | **CVE-2026-16117 (critical, CVSS 10)**: prefix-rewrite bypass via URL-encoded paths in ≤ 11.5.0. Fixed in 11.6.0. Never use anything older. |
-| @fastify/helmet | 13.2.0 | Current: 13.0.2. |
+| @fastify/helmet | 13.1.2 (pinned) | Newest release older than 7 days. |
 | @fastify/rate-limit | 11.2.1 | Current: 11.0.0. |
 | @fastify/cookie | 11.1.3 | New. |
 | better-sqlite3 | 13.0.3 | Current: 12.10.0. Bundles SQLite, so updates also bring SQLite security fixes. |
 | argon2 | 0.45.1 | Current: 0.44.0. |
 | jose | 6.2.12 | Current: 6.2.3. |
-| zod | 4.6.7 | Current: 3.25.76 (major upgrade: v4 API changes, done in Phase 0 with tests). |
+| zod | 4.6.5 (pinned) | Upgraded from 3.25.76; IDs validated with `z.guid()` so existing iOS IDs stay valid. |
 | dotenv | **remove** | Node's built-in `--env-file` replaces it: one less dependency. |
 | tsx | dev only | Production runs compiled JS (`tsc` → `dist/`, then `node dist/index.js`). |
-| TypeScript | 7.0.2 | Current: 6.0.3. |
+| TypeScript | 6.0.3 (pinned) | TypeScript 7 exists, but typescript-eslint and svelte-check don't support it yet (peer range < 6.1). Move to 7 when they do. |
 | Svelte | 5.57.2 | |
 | Vite | 8.3.4 | 2026 dev-server CVEs (e.g. CVE-2026-39363, file read via WebSocket) are fixed in 8.0.5+. The dev server is only ever run on the dev machine, bound to localhost, and is never deployed. |
 | Leaflet | 1.9.4 | Latest stable (2.x is not stable yet). Self-hosted, not from a CDN. |
 | sharp | 0.35.5 | Bundles libvips; keep current. |
 | node-ical | 0.27.3 | |
 | pino (logging) | 10.4.0 | Already used by Fastify. |
-| vitest / Playwright / ESLint | 5.0.5 / 1.64.1 / 10.13.0 | Dev only. |
+| vitest / ESLint | 5.0.3 / 10.12.0 (pinned) | Dev only. |
 | MagicMirror² | **2.38.0** | **CVE-2026-63641**: Socket.IO ignored `ipWhitelist` in < 2.37.0, which let a LAN client trigger server-side requests and, in one case, command execution via `updatenotification`. Never run < 2.37.0. |
 
 ### 7.2 Supply-chain rules
@@ -326,7 +326,7 @@ Checked 2026-10-16 against each project's GitHub release tags. Re-check at the s
 
 ### 7.6 Existing server: findings and Phase 0 fixes
 
-A full `npm audit` couldn't run from the planning environment (the npm registry was blocked there). It runs first thing in Phase 0 on the Linux PC.
+**Resolved 2026-10-16.** All dependencies were re-resolved with `scripts/update-deps.sh` (latest release at least 7 days old, exact pins, lockfiles committed). `npm audit` (prod + dev): **0 vulnerabilities** in server and web. OSV.dev batch check of all 485 locked package versions: **0 known vulnerabilities**.
 
 Comparing the lockfile against published advisories and releases:
 - `@fastify/static` **8.3.0 → 10.1.6**: two majors behind; 2026 path-traversal fixes are in 10.1.x.
@@ -381,3 +381,4 @@ Still open (non-blocking):
 | 2026-10-16 | Dark mode only (D17). Confirmed the iOS app needs no code change for the move: its server URL is user-entered in Settings. Phase 0 now says to copy the DB + `.env` so the phones keep their logins and sync cursors. |
 | 2026-10-16 | Added §7 Engineering standards and security: latest pinned versions, supply-chain rules, audit gate, code standards, app/infra security. Existing server is behind on security fixes (`@fastify/static` 8.3.0, `fastify` 5.8.5); upgrades are part of Phase 0. HTTPS is now required (Phase 7). |
 | 2026-10-16 | Implementation started. Phases 0–4 code written (server, web app, Docker, kiosk script) with tests. Tracker adapter, radar ingest, env/schema parsing (zod v4), SSRF helpers and secret box verified by running them; the full test suite, type-check and build still need `npm install`, which was blocked in the build environment (npm registry not reachable). |
+| 2026-10-16 | npm access opened. Dependencies pinned (lockfiles committed), audit + OSV clean. Server: type-check clean, ESLint (strict + security plugin) clean with 0 warnings, **26/26 tests pass** on Node 26.12. Web: svelte-check 0 errors / 0 warnings, ESLint + CSP check clean, production build 36 KB JS + 5 KB CSS gzipped initial (radar lazy-loaded). End-to-end in headless Chromium at 1920×1080 against a fake tracker and recorded-format ADS-B data: login, Home (idle + plane overhead), Flights (LED), Calendar, Radar with selection, Settings and kiosk pairing all work, with no CSP violations; session cookies are httpOnly + SameSite=Strict and unreadable from page JS. Fixed during testing: aircraft-name race at startup, Home flight-card overflow, kiosk tab rail visible on load. |

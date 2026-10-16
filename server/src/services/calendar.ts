@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { FastifyBaseLogger } from 'fastify';
-import ical from 'node-ical';
+import ical, { type CalendarResponse, type VEvent } from 'node-ical';
 import { z } from 'zod';
 import type { DB } from '../db.js';
 import type { EventBus } from '../events.js';
@@ -51,7 +51,7 @@ interface CachedSource {
   fetchedAt: number;
   ok: boolean;
   error: string | null;
-  events: ical.CalendarResponse;
+  events: CalendarResponse;
 }
 
 const WORKOUT_SOURCE_ID = 'homebase-workouts';
@@ -64,13 +64,9 @@ function ymdLocal(d: Date): string {
   return `${y}-${m}-${day}`;
 }
 
-function isDateOnly(d: unknown): boolean {
-  return d instanceof Date && (d as Date & { dateOnly?: boolean }).dateOnly === true;
-}
-
 function eventTitle(summary: unknown): string {
   if (typeof summary === 'string') return summary.slice(0, 200);
-  if (summary && typeof summary === 'object' && 'val' in summary) return String((summary as { val: unknown }).val).slice(0, 200);
+  if (summary && typeof summary === 'object' && 'val' in summary) return String(summary.val).slice(0, 200);
   return '(No title)';
 }
 
@@ -198,9 +194,9 @@ export class CalendarService {
     for (const src of sources) {
       const cached = this.cache.get(src.id);
       if (!cached) continue;
-      for (const comp of Object.values(cached.events)) {
-        if (!comp || comp.type !== 'VEVENT') continue;
-        this.expand(comp, src.id, src.color, from, to, out);
+      for (const [key, comp] of Object.entries(cached.events)) {
+        if (key === 'vcalendar' || typeof comp !== 'object' || (comp as { type?: string }).type !== 'VEVENT') continue;
+        this.expand(comp as VEvent, src.id, src.color, from, to, out);
       }
     }
     out.push(...this.workoutEvents(userId, fromYmd, toYmd));
@@ -208,50 +204,25 @@ export class CalendarService {
     return out.slice(0, 2_000);
   }
 
-  private expand(ev: ical.VEvent, sourceId: string, color: string, from: Date, to: Date, out: CalendarEvent[]): void {
-    if ((ev as { status?: string }).status === 'CANCELLED') return;
-    const start = ev.start as Date | undefined;
-    if (!(start instanceof Date)) return;
-    const end = (ev.end as Date | undefined) ?? start;
-    const allDay = isDateOnly(start);
-    const durationMs = Math.max(0, end.getTime() - start.getTime()) || (allDay ? 86_400_000 : 0);
-
-    const push = (s: Date, e: Date, title: string, key: string): void => {
-      if (e <= from || s >= to) return;
+  private expand(ev: VEvent, sourceId: string, color: string, from: Date, to: Date, out: CalendarEvent[]): void {
+    if (ev.status === 'CANCELLED') return;
+    // node-ical expands RRULEs with EXDATE exclusions, RECURRENCE-ID overrides
+    // and time zones; `expandOngoing` keeps multi-day events that began earlier.
+    const instances = ical.expandRecurringEvent(ev, { from, to, expandOngoing: true }).slice(0, 500);
+    for (const inst of instances) {
+      if (inst.event.status === 'CANCELLED') continue;
+      const s = inst.start as Date;
+      const e = (inst.end as Date | undefined) ?? new Date(s.getTime() + (inst.isFullDay ? 86_400_000 : 0));
+      if (e <= from || s >= to) continue;
       out.push({
-        id: `${sourceId}:${ev.uid}:${key}`,
+        id: `${sourceId}:${ev.uid}:${s.toISOString()}`,
         sourceId,
-        title,
-        allDay,
-        start: allDay ? ymdLocal(s) : s.toISOString(),
-        end: allDay ? ymdLocal(e) : e.toISOString(),
+        title: eventTitle(inst.summary),
+        allDay: inst.isFullDay,
+        start: inst.isFullDay ? ymdLocal(s) : s.toISOString(),
+        end: inst.isFullDay ? ymdLocal(e > s ? e : new Date(s.getTime() + 86_400_000)) : e.toISOString(),
         color,
       });
-    };
-
-    const rrule = (ev as { rrule?: { between: (a: Date, b: Date, inc: boolean) => Date[] } }).rrule;
-    if (!rrule) {
-      push(start, new Date(start.getTime() + durationMs), eventTitle(ev.summary), start.toISOString());
-      return;
-    }
-
-    const exdates = (ev.exdate ?? {}) as Record<string, unknown>;
-    const overrides = ((ev as { recurrences?: Record<string, ical.VEvent> }).recurrences ?? {}) as Record<string, ical.VEvent>;
-    // Look back by the event duration so multi-day occurrences that started
-    // before the window are included.
-    const occurrences = rrule.between(new Date(from.getTime() - durationMs), to, true).slice(0, 500);
-    for (const occ of occurrences) {
-      const key = occ.toISOString().slice(0, 10);
-      if (key in exdates) continue;
-      const override = overrides[key];
-      if (override) {
-        if ((override as { status?: string }).status === 'CANCELLED') continue;
-        const os = override.start as Date;
-        const oe = (override.end as Date | undefined) ?? new Date(os.getTime() + durationMs);
-        push(os, oe, eventTitle(override.summary ?? ev.summary), key);
-        continue;
-      }
-      push(occ, new Date(occ.getTime() + durationMs), eventTitle(ev.summary), key);
     }
   }
 

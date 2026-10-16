@@ -158,11 +158,12 @@ export function arrivalDelayLevel(estimated: number | null, scheduled: number | 
   return 'extreme';
 }
 
+const AIRPORT_SUFFIXES = [' international airport', ' intl. airport', ' intl airport', ' regional airport', ' municipal airport', ' airport'];
+
 export function shortAirportName(name: string): string {
-  return name
-    .replace(/\s+(International|Intl\.?|Regional|Municipal)?\s*Airport$/i, '')
-    .replace(/\s+Airport$/i, '')
-    .trim();
+  const lower = name.toLowerCase();
+  const suffix = AIRPORT_SUFFIXES.find((s) => lower.endsWith(s));
+  return (suffix ? name.slice(0, -suffix.length) : name).trim();
 }
 
 const CODE_RE = /^[A-Z0-9]{3,4}$/;
@@ -175,6 +176,7 @@ export class TrackerService {
   private airportNames = new Map<string, { name: string; lat: number; lon: number } | null>();
   private readonly host: string;
   private lastSerialized = '';
+  private stopped = false;
 
   constructor(
     private readonly env: Env,
@@ -210,12 +212,19 @@ export class TrackerService {
       run();
       this.timers.push(setInterval(run, ms));
     };
-    every(5_000, () => this.pollFlights());
-    every(60_000, () => this.pollWeatherAndClock());
-    every(24 * 3_600_000, () => this.loadAircraftTypes());
+    // Load aircraft type names first so the first flights already carry them.
+    void this.loadAircraftTypes()
+      .catch((err: unknown) => this.log.debug({ err }, 'tracker aircraft types failed'))
+      .finally(() => {
+        if (!this.state.enabled || this.stopped) return;
+        every(5_000, () => this.pollFlights());
+        every(60_000, () => this.pollWeatherAndClock());
+        this.timers.push(setInterval(() => void this.loadAircraftTypes().catch(() => undefined), 24 * 3_600_000));
+      });
   }
 
   stop(): void {
+    this.stopped = true;
     for (const t of this.timers) clearInterval(t);
     this.timers = [];
   }
