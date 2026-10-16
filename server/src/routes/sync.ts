@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
-import { db, nextSeq, currentSeq } from '../db.js';
+import { z } from 'zod';
+import { nextSeq, currentSeq } from '../db.js';
 import { pushSchema, pullQuerySchema, collectionPayloads, shareableCollections } from '../schemas.js';
 import type { CollectionName } from '../schemas.js';
 
@@ -28,6 +29,10 @@ interface ShareRow {
 const PULL_LIMIT = 1000;
 
 export default async function syncRoutes(app: FastifyInstance): Promise<void> {
+  const { db, bus } = app.ctx;
+  const shareRecipients = db.prepare(
+    `SELECT shared_with_id FROM shares WHERE item_type = ? AND item_id = ? AND deleted_at IS NULL`,
+  );
   const getItem = db.prepare(
     `SELECT owner_id, updated_at, payload FROM items WHERE collection = ? AND id = ?`,
   );
@@ -45,13 +50,14 @@ export default async function syncRoutes(app: FastifyInstance): Promise<void> {
        payload = excluded.payload`,
   );
 
-  app.post('/sync/push', { preHandler: [app.authenticate] }, async (req, reply) => {
+  app.post('/sync/push', { preHandler: [app.requireUser], bodyLimit: 2 * 1024 * 1024 }, async (req, reply) => {
     const parsed = pushSchema.safeParse(req.body);
     if (!parsed.success) {
-      return reply.code(400).send({ error: 'invalid_input', details: parsed.error.flatten() });
+      return reply.code(400).send({ error: 'invalid_input', details: z.flattenError(parsed.error) });
     }
     const me = req.userId;
     const results: Array<{ collection: string; id: string; status: string }> = [];
+    const affected = new Set<string>();
 
     db.transaction(() => {
       for (const change of parsed.data.changes) {
@@ -93,17 +99,22 @@ export default async function syncRoutes(app: FastifyInstance): Promise<void> {
           ownerId,
           change.updatedAt,
           change.deletedAt,
-          nextSeq(),
+          nextSeq(db),
           payloadJson,
         );
         results.push({ collection: change.collection, id: change.id, status: 'applied' });
+        affected.add(ownerId);
+        for (const r of shareRecipients.all(change.collection, change.id) as Array<{ shared_with_id: string }>) {
+          affected.add(r.shared_with_id);
+        }
       }
     })();
 
-    return { results, serverSeq: currentSeq() };
+    if (affected.size > 0) bus.emit('items', { userIds: [...affected] });
+    return { results, serverSeq: currentSeq(db) };
   });
 
-  app.get('/sync/pull', { preHandler: [app.authenticate] }, async (req, reply) => {
+  app.get('/sync/pull', { preHandler: [app.requireUser] }, async (req, reply) => {
     const parsed = pullQuerySchema.safeParse(req.query);
     if (!parsed.success) {
       return reply.code(400).send({ error: 'invalid_input' });

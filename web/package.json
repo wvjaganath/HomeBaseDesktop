@@ -1,0 +1,36 @@
+{
+  "name": "homebase-desktop-web",
+  "version": "2.0.0",
+  "private": true,
+  "type": "module",
+  "description": "HomeBase Desktop web app (Svelte 5). Builds into ../server/web-dist.",
+  "engines": {
+    "node": ">=24.11.0"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "check": "svelte-check --tsconfig ./tsconfig.json --fail-on-warnings",
+    "lint": "eslint .",
+    "audit:prod": "npm audit --omit=dev --audit-level=high"
+  },
+  "dependencies": {
+    "@fontsource-variable/instrument-sans": "PIN_AT_INSTALL",
+    "@fontsource/dotgothic16": "PIN_AT_INSTALL",
+    "@fontsource/ibm-plex-mono": "PIN_AT_INSTALL",
+    "leaflet": "1.9.4"
+  },
+  "devDependencies": {
+    "@eslint/js": "PIN_AT_INSTALL",
+    "@sveltejs/vite-plugin-svelte": "PIN_AT_INSTALL",
+    "@types/leaflet": "PIN_AT_INSTALL",
+    "eslint": "10.13.0",
+    "eslint-plugin-svelte": "PIN_AT_INSTALL",
+    "globals": "PIN_AT_INSTALL",
+    "svelte": "5.57.2",
+    "svelte-check": "PIN_AT_INSTALL",
+    "typescript": "7.0.2",
+    "typescript-eslint": "PIN_AT_INSTALL",
+    "vite": "8.3.4"
+  }
+}

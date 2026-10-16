@@ -1,32 +1,45 @@
 {
-  "name": "homebase-server",
-  "version": "1.0.0",
+  "name": "homebase-hub-server",
+  "version": "2.0.0",
   "private": true,
-  "description": "HomeBase sync server — standalone, copy this folder to your home server and run.",
+  "description": "HomeBase hub server: sync API for the iOS app plus the HomeBase Desktop web app, plane tracker adapter, radar and calendar.",
   "type": "module",
   "engines": {
-    "node": ">=18"
+    "node": ">=24.11.0"
   },
   "scripts": {
-    "dev": "tsx watch src/index.ts",
-    "start": "tsx src/index.ts",
-    "typecheck": "tsc --noEmit"
+    "dev": "tsx watch --env-file-if-exists=.env src/index.ts",
+    "build": "tsc -p tsconfig.build.json",
+    "start": "node --env-file-if-exists=.env dist/index.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "audit:prod": "npm audit --omit=dev --audit-level=high",
+    "logos": "node --env-file-if-exists=.env dist/scripts/fetchLogos.js"
   },
   "dependencies": {
-    "@fastify/helmet": "^13.0.2",
-    "@fastify/rate-limit": "^11.0.0",
-    "@fastify/static": "^8.3.0",
-    "argon2": "^0.44.0",
-    "better-sqlite3": "^12.10.0",
-    "dotenv": "^17.4.2",
-    "fastify": "^5.8.5",
-    "jose": "^6.2.3",
-    "zod": "^3.25.76"
+    "@fastify/cookie": "11.1.3",
+    "@fastify/helmet": "13.2.0",
+    "@fastify/rate-limit": "11.2.1",
+    "@fastify/static": "10.1.6",
+    "argon2": "0.45.1",
+    "better-sqlite3": "13.0.3",
+    "fastify": "5.12.7",
+    "jose": "6.2.12",
+    "node-ical": "0.27.3",
+    "sharp": "0.35.5",
+    "zod": "4.6.7"
   },
   "devDependencies": {
-    "@types/better-sqlite3": "^7.6.13",
-    "@types/node": "^25.9.3",
-    "tsx": "^4.22.4",
-    "typescript": "^6.0.3"
+    "@eslint/js": "PIN_AT_INSTALL",
+    "@types/better-sqlite3": "PIN_AT_INSTALL",
+    "@types/node": "PIN_AT_INSTALL",
+    "eslint": "10.13.0",
+    "eslint-plugin-security": "PIN_AT_INSTALL",
+    "globals": "PIN_AT_INSTALL",
+    "tsx": "4.23.15",
+    "typescript": "7.0.2",
+    "typescript-eslint": "PIN_AT_INSTALL",
+    "vitest": "5.0.5"
   }
 }

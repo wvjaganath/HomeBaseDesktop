@@ -1,0 +1,65 @@
+# HomeBase hub on the Linux PC.
+#
+#   cd deploy
+#   cp hub.env.example hub.env && chmod 600 hub.env   # then fill it in
+#   mkdir -p data && sudo chown -R 10001:10001 data
+#   docker compose build && docker compose up -d
+#   docker compose run --rm logos                      # one-off: fetch airline logos
+#
+# Security posture (README §7.5): non-root, read-only root filesystem, all
+# capabilities dropped, no privilege escalation, resource limits.
+
+x-hardening: &hardening
+  read_only: true
+  cap_drop: [ALL]
+  security_opt:
+    - no-new-privileges:true
+  user: "10001:10001"
+  logging:
+    driver: json-file
+    options: { max-size: "10m", max-file: "3" }
+
+services:
+  hub:
+    <<: *hardening
+    build:
+      context: ..
+      dockerfile: deploy/hub.Dockerfile
+      args:
+        NODE_IMAGE: ${NODE_IMAGE:-node:26-bookworm-slim}
+    image: homebase-hub:local
+    restart: unless-stopped
+    env_file: ./hub.env
+    environment:
+      DATA_DIR: /data
+      NODE_ENV: production
+      TZ: ${TZ:-America/Chicago}
+    volumes:
+      - ./data:/data
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    ports:
+      # 3000 keeps the iPhones' saved address working; 8080 is for screens.
+      - "3000:3000"
+      - "8080:3000"
+    mem_limit: 512m
+    cpus: 1.5
+    pids_limit: 256
+
+  # One-off helper: clones/updates the airline logo set into ./data/logo-src.
+  #   docker compose run --rm logos
+  logos:
+    <<: *hardening
+    image: ${GIT_IMAGE:-alpine/git:latest}
+    profiles: ["tools"]
+    volumes:
+      - ./data:/data
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    environment:
+      HOME: /tmp
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >
+        if [ -d /data/logo-src/.git ]; then git -C /data/logo-src pull --ff-only;
+        else git clone --depth 1 https://github.com/Jxck-S/airline-logos /data/logo-src; fi

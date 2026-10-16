@@ -1,11 +1,11 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import Database from 'better-sqlite3';
-import { env } from './env.js';
 
-export const db = new Database(env.DB_PATH);
-db.pragma('journal_mode = WAL');
-db.pragma('foreign_keys = ON');
+export type DB = Database.Database;
 
 // Append-only migrations: never edit an existing entry, always add a new one.
+// Entry 0 is the original HomeBase schema; existing databases keep working.
 const migrations: string[] = [
   `
   CREATE TABLE users (
@@ -57,27 +57,74 @@ const migrations: string[] = [
   CREATE TABLE meta (key TEXT PRIMARY KEY, value INTEGER NOT NULL);
   INSERT INTO meta (key, value) VALUES ('sync_seq', 0);
   `,
+  // 2026-10: HomeBase Desktop hub — kiosk device tokens and calendar sources.
+  `
+  CREATE TABLE device_tokens (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES users(id),
+    name TEXT NOT NULL,
+    token_hash TEXT NOT NULL UNIQUE,
+    settings TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL,
+    last_used_at TEXT,
+    revoked_at TEXT
+  );
+  CREATE INDEX idx_device_tokens_user ON device_tokens(user_id);
+
+  CREATE TABLE calendar_sources (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES users(id),
+    name TEXT NOT NULL,
+    color TEXT NOT NULL,
+    url_enc TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    deleted_at TEXT
+  );
+  CREATE INDEX idx_calendar_sources_user ON calendar_sources(user_id);
+  `,
 ];
 
-export function migrate(): void {
+export function openDb(dbPath: string): DB {
+  if (dbPath !== ':memory:') {
+    fs.mkdirSync(path.dirname(dbPath), { recursive: true, mode: 0o700 });
+  }
+  const db = new Database(dbPath);
+  db.pragma('journal_mode = WAL');
+  db.pragma('foreign_keys = ON');
+  db.pragma('busy_timeout = 5000');
+  if (dbPath !== ':memory:') {
+    // The DB holds password hashes and encrypted secrets: owner-only access.
+    try {
+      fs.chmodSync(dbPath, 0o600);
+    } catch {
+      // Not fatal (e.g. a filesystem without POSIX modes); logged by caller if needed.
+    }
+  }
+  migrate(db);
+  return db;
+}
+
+export function migrate(db: DB): void {
   const version = db.pragma('user_version', { simple: true }) as number;
   for (let i = version; i < migrations.length; i++) {
+    const sql = migrations[i];
+    if (sql === undefined) break;
     db.transaction(() => {
-      db.exec(migrations[i]);
+      db.exec(sql);
       db.pragma(`user_version = ${i + 1}`);
     })();
   }
 }
 
 /** Monotonic change counter driving delta pulls. Call inside a transaction. */
-export function nextSeq(): number {
+export function nextSeq(db: DB): number {
   const row = db
     .prepare(`UPDATE meta SET value = value + 1 WHERE key = 'sync_seq' RETURNING value`)
     .get() as { value: number };
   return row.value;
 }
 
-export function currentSeq(): number {
+export function currentSeq(db: DB): number {
   const row = db.prepare(`SELECT value FROM meta WHERE key = 'sync_seq'`).get() as { value: number };
   return row.value;
 }

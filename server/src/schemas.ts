@@ -1,12 +1,14 @@
 import { z } from 'zod';
 
+// zod v4. IDs use z.guid() (any 8-4-4-4-12 hex) rather than z.uuid(), which in v4
+// enforces RFC 9562 variant bits and could reject IDs existing clients already sent.
 // NOTE: these schemas are deliberately duplicated as Codable structs in the iOS
 // app (app/HomeBase/Core/...). When a payload shape changes, change both sides.
 
-const isoDate = z.string().datetime({ offset: true });
+const isoDate = z.iso.datetime({ offset: true });
 
 export const credentialsSchema = z.object({
-  email: z.string().email().max(254),
+  email: z.email().max(254),
   password: z.string().min(10).max(128),
 });
 
@@ -51,7 +53,7 @@ const workoutPayload = z.object({
 });
 
 const noteItemPayload = z.object({
-  id: z.string().uuid(),
+  id: z.guid(),
   text: z.string().max(2000),
   done: z.boolean(),
   position: z.number().int().min(0),
@@ -146,7 +148,7 @@ export const shareableCollections: CollectionName[] = ['notes', 'reminders'];
 
 export const changeSchema = z.object({
   collection: collectionEnum,
-  id: z.string().uuid(),
+  id: z.guid(),
   updatedAt: isoDate,
   deletedAt: isoDate.nullable(),
   payload: z.unknown(),
@@ -162,7 +164,7 @@ export const pullQuerySchema = z.object({
 
 export const shareCreateSchema = z.object({
   itemType: z.enum(['notes', 'reminders']),
-  itemId: z.string().uuid(),
-  sharedWithId: z.string().uuid(),
+  itemId: z.guid(),
+  sharedWithId: z.guid(),
   permission: z.enum(['read', 'write']),
 });

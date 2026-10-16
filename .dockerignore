@@ -1,0 +1,13 @@
+**/node_modules
+**/dist
+**/coverage
+server/web-dist
+.git
+.xfer
+deploy/data
+deploy/hub.env
+deploy/.env
+**/.env
+**/*.db
+**/*.db-*
+**/.DS_Store
