@@ -31,15 +31,9 @@
     "zod": "4.6.7"
   },
   "devDependencies": {
-    "@eslint/js": "PIN_AT_INSTALL",
-    "@types/better-sqlite3": "PIN_AT_INSTALL",
-    "@types/node": "PIN_AT_INSTALL",
     "eslint": "10.13.0",
-    "eslint-plugin-security": "PIN_AT_INSTALL",
-    "globals": "PIN_AT_INSTALL",
     "tsx": "4.23.15",
     "typescript": "7.0.2",
-    "typescript-eslint": "PIN_AT_INSTALL",
     "vitest": "5.0.5"
   }
 }

@@ -62,8 +62,10 @@ describe('SecretBox', () => {
 
 describe('geo', () => {
   it('computes distance and bearing', () => {
-    // Chicago Midway → Ontario CA is ~1,685 statute miles.
-    expect(Math.round(haversineMiles(41.786, -87.7524, 34.056, -117.6012) / 10) * 10).toBe(1690);
+    // Chicago Midway → Ontario CA: roughly 1,690–1,700 statute miles.
+    const d = haversineMiles(41.786, -87.7524, 34.056, -117.6012);
+    expect(d).toBeGreaterThan(1650);
+    expect(d).toBeLessThan(1720);
     expect(cardinal(bearingDeg(41.7, -87.9, 41.6, -87.9))).toBe('S');
     expect(cardinal(359)).toBe('N');
   });

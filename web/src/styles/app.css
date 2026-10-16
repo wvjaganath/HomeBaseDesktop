@@ -1,0 +1,169 @@
+/* HomeBase Desktop: dark mode only (README D17). */
+:root {
+  color-scheme: dark;
+  --bg: #0a0d12;
+  --bg-deep: #07090c;
+  --surface: #11161d;
+  --surface-2: #0c1117;
+  --line: #1d252f;
+  --line-2: #2a3441;
+  --text: #e9eef3;
+  --text-2: #c4cdd7;
+  --muted: #8f9baa;
+  --faint: #6b7787;
+  --accent: #2dd4bf;
+  --accent-ink: #04211e;
+  --brand: #0f9d8f;
+
+  /* calendars / modules */
+  --cal: #a5b4fc;
+  --rem: #c4b5fd;
+  --note: #fcd34d;
+
+  /* status + delay colours (tracker semantics) */
+  --ok: #4ade80;
+  --warn: #facc15;
+  --orange: #fb923c;
+  --bad: #f87171;
+  --purple: #c084fc;
+  --blue: #60a5fa;
+  --unknown: #9ca3af;
+
+  /* altitude bands on the radar */
+  --alt-low: #fb923c;
+  --alt-mid: #facc15;
+  --alt-high: #22d3ee;
+  --alt-top: #a78bfa;
+
+  --radius: 22px;
+  --font: 'Instrument Sans Variable', 'Instrument Sans', system-ui, sans-serif;
+  --mono: 'IBM Plex Mono', ui-monospace, monospace;
+  --led: 'DotGothic16', 'IBM Plex Mono', monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+#app {
+  height: 100%;
+}
+
+button,
+input,
+select {
+  font: inherit;
+  color: inherit;
+}
+
+a {
+  color: var(--accent);
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+.label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 2.5px;
+  text-transform: uppercase;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.mono {
+  font-family: var(--mono);
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 18px;
+  border-radius: 12px;
+  border: 1px solid var(--line-2);
+  background: var(--surface-2);
+  cursor: pointer;
+  font-weight: 600;
+}
+.btn:hover {
+  border-color: var(--accent);
+}
+.btn.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+}
+.btn.danger:hover {
+  border-color: var(--bad);
+  color: var(--bad);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 14px;
+  color: var(--muted);
+}
+.field input,
+.field select {
+  min-height: 44px;
+  padding: 0 14px;
+  border-radius: 10px;
+  border: 1px solid var(--line-2);
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 16px;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  border: 0;
+}
+
+/* Kiosk: hide the cursor when idle. */
+.kiosk-idle,
+.kiosk-idle * {
+  cursor: none !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation: none !important;
+    transition: none !important;
+  }
+}
