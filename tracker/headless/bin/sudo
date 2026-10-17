@@ -1,0 +1,5 @@
+#!/bin/sh
+# HomeBase: no sudo/systemd in the container. Failing here makes the tracker
+# fall back to its ".restart_requested" flag, which homebase_run.py watches.
+echo "sudo is not available in the HomeBase tracker container" >&2
+exit 1
