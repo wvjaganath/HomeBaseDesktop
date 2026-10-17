@@ -1,9 +1,8 @@
-import { randomUUID } from 'node:crypto';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { credentialsSchema, registerSchema, refreshSchema } from '../schemas.js';
 import { cookieNames, secureCookies } from '../security/principal.js';
-import { changePassword, createUser, useResetToken, UserAdminError } from '../services/userAdmin.js';
+import { changePassword, createUser, hasAnyUser, registrationOpen, useResetToken, UserAdminError } from '../services/userAdmin.js';
 
 /**
  * Two flavours of the same login:
@@ -35,30 +34,26 @@ export default async function authRoutes(app: FastifyInstance): Promise<void> {
   // --- iOS app (Bearer tokens) ---------------------------------------------
 
   app.post('/auth/register', authLimit, async (req, reply) => {
-    if (!env.ALLOW_REGISTRATION) {
+    if (!registrationOpen(db, env.ALLOW_REGISTRATION)) {
       return reply.code(403).send({ error: 'registration_disabled' });
     }
     const parsed = registerSchema.safeParse(req.body);
     if (!parsed.success) {
       return reply.code(400).send({ error: 'invalid_input', details: z.flattenError(parsed.error).fieldErrors });
     }
-    const email = parsed.data.email.toLowerCase();
-    if (auth.findUserByEmail(email)) {
-      return reply.code(409).send({ error: 'email_taken' });
+    try {
+      const user = await createUser(db, auth, parsed.data, { onlyIfNoAccounts: !env.ALLOW_REGISTRATION });
+      req.log.info({ event: 'user_registered', via: 'app', userId: user.id }, 'account created');
+      return {
+        user,
+        accessToken: await auth.signAccessToken(user.id, user.displayName),
+        refreshToken: auth.issueRefreshToken(user.id),
+      };
+    } catch (err) {
+      if (err instanceof UserAdminError && err.code === 'exists') return reply.code(409).send({ error: 'email_taken' });
+      if (err instanceof UserAdminError && err.code === 'closed') return reply.code(403).send({ error: 'registration_disabled' });
+      throw err;
     }
-    const id = randomUUID();
-    db.prepare(`INSERT INTO users (id, email, display_name, password_hash, created_at) VALUES (?, ?, ?, ?, ?)`).run(
-      id,
-      email,
-      parsed.data.displayName,
-      await auth.hashPassword(parsed.data.password),
-      new Date().toISOString(),
-    );
-    return {
-      user: { id, email, displayName: parsed.data.displayName },
-      accessToken: await auth.signAccessToken(id, parsed.data.displayName),
-      refreshToken: auth.issueRefreshToken(id),
-    };
   });
 
   app.post('/auth/login', authLimit, async (req, reply) => {
@@ -143,18 +138,22 @@ export default async function authRoutes(app: FastifyInstance): Promise<void> {
   // is sent anywhere; reset links are made on the PC with the users script).
 
   /** What the sign-in screen may offer. Public. */
-  app.get('/auth/web/options', async () => ({ registration: env.ALLOW_REGISTRATION }));
+  app.get('/auth/web/options', async () => ({
+    registration: registrationOpen(db, env.ALLOW_REGISTRATION),
+    firstAccount: !hasAnyUser(db),
+  }));
 
   app.post('/auth/web/register', authLimit, async (req, reply) => {
-    if (!env.ALLOW_REGISTRATION) return reply.code(403).send({ error: 'registration_disabled' });
+    if (!registrationOpen(db, env.ALLOW_REGISTRATION)) return reply.code(403).send({ error: 'registration_disabled' });
     const body = z.object({ email: z.string(), displayName: z.string(), password: z.string() }).safeParse(req.body);
     if (!body.success) return reply.code(400).send({ error: 'invalid_input' });
     try {
-      const user = await createUser(db, auth, body.data);
+      const user = await createUser(db, auth, body.data, { onlyIfNoAccounts: !env.ALLOW_REGISTRATION });
       req.log.info({ event: 'user_registered', via: 'web', userId: user.id }, 'account created');
       setSessionCookies(req, reply, await auth.signAccessToken(user.id, user.displayName), auth.issueRefreshToken(user.id));
       return { user };
     } catch (err) {
+      if (err instanceof UserAdminError && err.code === 'closed') return reply.code(403).send({ error: 'registration_disabled', message: err.message });
       if (err instanceof UserAdminError) return reply.code(400).send({ error: 'invalid_input', message: err.message });
       throw err;
     }

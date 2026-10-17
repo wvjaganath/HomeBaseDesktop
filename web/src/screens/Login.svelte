@@ -7,6 +7,7 @@
   type Mode = 'signin' | 'register' | 'forgot';
   let mode = $state<Mode>('signin');
   let registration = $state(false);
+  let firstAccount = $state(false);
   let email = $state('');
   let name = $state('');
   let password = $state('');
@@ -16,8 +17,13 @@
 
   onMount(() => {
     api
-      .get<{ registration: boolean }>('/auth/web/options')
-      .then((o) => (registration = o.registration))
+      .get<{ registration: boolean; firstAccount: boolean }>('/auth/web/options')
+      .then((o) => {
+        registration = o.registration;
+        firstAccount = o.firstAccount;
+        // A brand-new hub has no accounts: start on "create the first one".
+        if (o.firstAccount && mode === 'signin') mode = 'register';
+      })
       .catch(() => {});
   });
 
@@ -61,7 +67,14 @@
       password = confirm = '';
       onSignedIn();
     } catch (err) {
-      error = err instanceof ApiError && err.status === 403 ? 'New accounts are turned off on this hub.' : message(err, 'Could not create the account.');
+      if (err instanceof ApiError && err.status === 403) {
+        // Someone else created the first account a moment ago, or sign-up was closed.
+        firstAccount = false;
+        registration = false;
+        error = err.detail ?? 'New accounts are turned off on this hub.';
+      } else {
+        error = message(err, 'Could not create the account.');
+      }
     } finally {
       busy = false;
     }
@@ -92,7 +105,13 @@
   {:else if mode === 'register'}
     {#if registration}
       <form class="card box" onsubmit={register}>
-        <h1>Create an account</h1>
+        {#if firstAccount}
+          <img src="/icons/icon.svg" alt="" width="56" height="56" />
+          <h1>Set up HomeBase</h1>
+          <p class="muted">This hub has no accounts yet. Create yours; it can add other people afterwards in Settings → People.</p>
+        {:else}
+          <h1>Create an account</h1>
+        {/if}
         <label class="field">
           <span>Name</span>
           <input autocomplete="name" required maxlength="50" bind:value={name} />
@@ -110,8 +129,8 @@
           <input type="password" autocomplete="new-password" required minlength="10" maxlength="128" bind:value={confirm} />
         </label>
         {#if error}<p class="error" role="alert">{error}</p>{/if}
-        <button class="btn primary" type="submit" disabled={busy}>{busy ? 'Creating…' : 'Create account'}</button>
-        <button class="link" type="button" onclick={() => show('signin')}>Back to sign in</button>
+        <button class="btn primary" type="submit" disabled={busy}>{busy ? 'Creating…' : firstAccount ? 'Create the first account' : 'Create account'}</button>
+        {#if !firstAccount}<button class="link" type="button" onclick={() => show('signin')}>Back to sign in</button>{/if}
       </form>
     {:else}
       <div class="card box">

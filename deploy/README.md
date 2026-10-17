@@ -100,8 +100,14 @@ In the browser (no PC needed):
   password they then change).
 - **Change your password:** Settings → Account → Change password. Your phones
   and other browsers are signed out and ask for the new one.
-- **Create an account** on the sign-in screen works only if you set
-  `ALLOW_REGISTRATION=true` in `hub.env`; otherwise it explains the above.
+- **First account:** on a hub with no accounts, the sign-in screen opens on
+  *Set up HomeBase*, so you can create yours in the browser. After that,
+  sign-up locks again (unless you set `ALLOW_REGISTRATION=true` in `hub.env`).
+  The iPhone app's sign-up follows the same rule.
+
+  If you're moving the old HomeBase server, copy its database first (§2,
+  *Moving the existing HomeBase server*) instead of creating new accounts:
+  new accounts start empty and the iPhones' existing data stays in the old file.
 
 **Forgot password** (the sign-in screen shows these steps too): HomeBase sends no
 email, so whoever runs the hub makes a one-time link on the PC:

@@ -16,20 +16,44 @@ const signIn = async (email: string, password: string) => {
 };
 
 describe('sign-up from the browser', () => {
-  it('is offered and works only when ALLOW_REGISTRATION=true', async () => {
+  it('with sign-up off, allows only the very first account', async () => {
     app = await testApp({ ALLOW_REGISTRATION: 'false' });
-    expect((await web('GET', '/auth/web/options')).json()).toEqual({ registration: false });
-    expect((await web('POST', '/auth/web/register', { email: 'a@example.com', displayName: 'A', password: 'long-enough-1' })).statusCode).toBe(403);
-    await app.close();
-
-    app = await testApp({ ALLOW_REGISTRATION: 'true' });
-    expect((await web('GET', '/auth/web/options')).json()).toEqual({ registration: true });
+    expect((await web('GET', '/auth/web/options')).json()).toEqual({ registration: true, firstAccount: true });
     const r = await web('POST', '/auth/web/register', { email: 'A@example.com', displayName: 'A', password: 'long-enough-1' });
     expect(r.statusCode).toBe(200);
     expect((await web('GET', '/auth/me', undefined, cookieHeader(r.headers['set-cookie']))).json<{ user: { email: string } }>().user.email).toBe('a@example.com');
-    const short = await web('POST', '/auth/web/register', { email: 'b@example.com', displayName: 'B', password: 'short' });
+    // Now locked: the screen stops offering it and the server refuses.
+    expect((await web('GET', '/auth/web/options')).json()).toEqual({ registration: false, firstAccount: false });
+    expect((await web('POST', '/auth/web/register', { email: 'b@example.com', displayName: 'B', password: 'long-enough-2' })).statusCode).toBe(403);
+    // The iPhone app's sign-up follows the same rule.
+    expect((await app.inject({ method: 'POST', url: '/auth/register', payload: { email: 'c@example.com', displayName: 'C', password: 'long-enough-3' } })).statusCode).toBe(403);
+  });
+
+  it('the iPhone app can also create the first account', async () => {
+    app = await testApp({ ALLOW_REGISTRATION: 'false' });
+    const r = await app.inject({ method: 'POST', url: '/auth/register', payload: { email: 'me@example.com', displayName: 'Me', password: 'long-enough-1' } });
+    expect(r.statusCode).toBe(200);
+    expect(r.json<{ accessToken: string }>().accessToken).toBeTruthy();
+  });
+
+  it('two people racing to create the first account: only one wins', async () => {
+    app = await testApp({ ALLOW_REGISTRATION: 'false' });
+    const [a, b] = await Promise.all([
+      web('POST', '/auth/web/register', { email: 'a@example.com', displayName: 'A', password: 'long-enough-1' }),
+      web('POST', '/auth/web/register', { email: 'b@example.com', displayName: 'B', password: 'long-enough-2' }),
+    ]);
+    expect([a.statusCode, b.statusCode].sort()).toEqual([200, 403]);
+  });
+
+  it('with ALLOW_REGISTRATION=true, anyone can sign up', async () => {
+    app = await testApp({ ALLOW_REGISTRATION: 'true' });
+    expect((await web('POST', '/auth/web/register', { email: 'a@example.com', displayName: 'A', password: 'long-enough-1' })).statusCode).toBe(200);
+    expect((await web('GET', '/auth/web/options')).json()).toEqual({ registration: true, firstAccount: false });
+    expect((await web('POST', '/auth/web/register', { email: 'b@example.com', displayName: 'B', password: 'long-enough-2' })).statusCode).toBe(200);
+    const short = await web('POST', '/auth/web/register', { email: 'c@example.com', displayName: 'C', password: 'short' });
     expect(short.statusCode).toBe(400);
     expect(short.json<{ message: string }>().message).toMatch(/10 to 128/);
+    expect((await web('POST', '/auth/web/register', { email: 'A@example.com', displayName: 'A', password: 'long-enough-1' })).json<{ message: string }>().message).toMatch(/already exists/);
   });
 
   it('rejects cross-site sign-up attempts', async () => {

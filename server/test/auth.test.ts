@@ -47,8 +47,9 @@ describe('iOS token auth (unchanged contract)', () => {
     expect(after.statusCode).toBe(401);
   });
 
-  it('refuses registration when disabled', async () => {
+  it('refuses registration when disabled (once the first account exists)', async () => {
     const closed = await testApp({ ALLOW_REGISTRATION: 'false' });
+    await registerUser(closed, 'first@example.com');
     const res = await closed.inject({
       method: 'POST',
       url: '/auth/register',

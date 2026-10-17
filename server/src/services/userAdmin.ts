@@ -10,7 +10,28 @@ import { credentialsSchema, registerSchema } from '../schemas.js';
  * `/auth/register`: email + 10–128 character password, argon2id.
  */
 
-export class UserAdminError extends Error {}
+export class UserAdminError extends Error {
+  constructor(
+    message: string,
+    /** exists: email taken · closed: sign-up isn't open · invalid: bad input · other */
+    readonly code: 'exists' | 'closed' | 'invalid' | 'other' = 'other',
+  ) {
+    super(message);
+  }
+}
+
+export function hasAnyUser(db: DB): boolean {
+  return db.prepare(`SELECT 1 FROM users LIMIT 1`).get() !== undefined;
+}
+
+/**
+ * Whether the sign-in screen / iOS app may create accounts: always for the
+ * very first account (a fresh hub has no other way in), otherwise only when
+ * ALLOW_REGISTRATION=true.
+ */
+export function registrationOpen(db: DB, allowRegistration: boolean): boolean {
+  return allowRegistration || !hasAnyUser(db);
+}
 
 export interface UserSummary {
   id: string;
@@ -34,19 +55,29 @@ export async function createUser(
   db: DB,
   auth: AuthService,
   input: { email: string; displayName: string; password: string },
+  opts: { onlyIfNoAccounts?: boolean } = {},
 ): Promise<{ id: string; email: string; displayName: string }> {
   const parsed = registerSchema.safeParse(input);
-  if (!parsed.success) throw new UserAdminError(firstIssue(parsed.error));
+  if (!parsed.success) throw new UserAdminError(firstIssue(parsed.error), 'invalid');
   const email = parsed.data.email.toLowerCase();
-  if (auth.findUserByEmail(email)) throw new UserAdminError(`An account for ${email} already exists.`);
+  if (auth.findUserByEmail(email)) throw new UserAdminError(`An account for ${email} already exists.`, 'exists');
+  const hash = await auth.hashPassword(parsed.data.password);
   const id = randomUUID();
-  db.prepare(`INSERT INTO users (id, email, display_name, password_hash, created_at) VALUES (?, ?, ?, ?, ?)`).run(
-    id,
-    email,
-    parsed.data.displayName,
-    await auth.hashPassword(parsed.data.password),
-    new Date().toISOString(),
-  );
+  // Checks and insert run together with no await in between, so two people
+  // racing to create the "first" account can't both succeed.
+  db.transaction(() => {
+    if (opts.onlyIfNoAccounts && hasAnyUser(db)) {
+      throw new UserAdminError('This hub already has an account. Ask someone signed in to add you in Settings → People.', 'closed');
+    }
+    if (auth.findUserByEmail(email)) throw new UserAdminError(`An account for ${email} already exists.`, 'exists');
+    db.prepare(`INSERT INTO users (id, email, display_name, password_hash, created_at) VALUES (?, ?, ?, ?, ?)`).run(
+      id,
+      email,
+      parsed.data.displayName,
+      hash,
+      new Date().toISOString(),
+    );
+  })();
   return { id, email, displayName: parsed.data.displayName };
 }
 
