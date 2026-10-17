@@ -26,6 +26,7 @@
     health: () => import('./screens/Health.svelte'),
     mirror: () => import('./screens/Mirror.svelte'),
     'tracker-settings': () => import('./screens/TrackerSettings.svelte'),
+    tracker: () => import('./screens/PlaneLog.svelte'),
   } as const;
   const EDIT_TABS = new Set(['notes', 'reminders', 'fitness', 'nutrition', 'health', 'settings', 'tracker-settings']);
 

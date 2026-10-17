@@ -198,10 +198,34 @@ describe('plane tracker settings through the hub', () => {
     expect(restarts).toBe(0);
   });
 
+  it('accepts a hostname or a base URL as the master tracker', async () => {
+    for (const [master, code] of [['plane-clock', 200], ['http://192.168.1.20:8081', 200], ['http://192.168.1.20:8081/x', 400], ['http://u:p@host:1', 400], ['ftp://host', 400]] as const) {
+      const body = valid();
+      body.config.master_slave.master_tracker = master;
+      expect((await web('PUT', '/api/tracker-admin/settings', body)).statusCode, master).toBe(code);
+    }
+  });
+
+  it('edits the LED board with ?target=board, only when LED_BOARD_URL is set', async () => {
+    const port = (tracker.address() as AddressInfo).port;
+    const both = await testApp({ TRACKER_URL: 'http://127.0.0.1:9', TRACKER_BUNDLED: 'true', LED_BOARD_URL: `http://127.0.0.1:${port}` });
+    const u = await registerUser(both, 'board@example.com');
+    const auth = { authorization: `Bearer ${u.accessToken}` };
+    const r = await both.inject({ method: 'GET', url: '/api/tracker-admin/settings?target=board', headers: auth });
+    expect(r.statusCode).toBe(200);
+    expect(r.json()).toMatchObject({ configured: true, bundled: true, board: true });
+    expect((await both.inject({ method: 'GET', url: '/api/tracker-admin/settings?target=evil', headers: auth })).statusCode).toBe(400);
+    await both.close();
+    const noBoard = await testApp({ TRACKER_URL: `http://127.0.0.1:${port}` });
+    const v = await registerUser(noBoard, 'nb@example.com');
+    expect((await noBoard.inject({ method: 'GET', url: '/api/tracker-admin/settings?target=board', headers: { authorization: `Bearer ${v.accessToken}` } })).json()).toEqual({ configured: false, bundled: false, board: false });
+    await noBoard.close();
+  });
+
   it('explains when TRACKER_URL isn’t set or the tracker is offline', async () => {
     const none = await testApp({});
     const u = await registerUser(none, 'a@example.com');
-    expect((await none.inject({ method: 'GET', url: '/api/tracker-admin/settings', headers: { authorization: `Bearer ${u.accessToken}` } })).json()).toEqual({ configured: false });
+    expect((await none.inject({ method: 'GET', url: '/api/tracker-admin/settings', headers: { authorization: `Bearer ${u.accessToken}` } })).json()).toEqual({ configured: false, bundled: false, board: false });
     await none.close();
     const off = await testApp({ TRACKER_URL: 'http://127.0.0.1:9' });
     const v = await registerUser(off, 'b@example.com');

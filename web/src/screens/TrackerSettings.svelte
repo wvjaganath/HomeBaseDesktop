@@ -71,6 +71,18 @@
   let badField = $state('');
   let confirmRestart = $state(false);
 
+  // Which tracker: the one this hub uses (bundled on this server in docker
+  // compose) or the LED board Pi (LED_BOARD_URL), which follows it.
+  let target = $state<'tracker' | 'board'>(location.hash.includes('board') ? 'board' : 'tracker');
+  let bundled = $state(false);
+  let hasBoard = $state(false);
+  let feedPort = $state(8081);
+  const q = $derived(`?target=${target}`);
+  // On the server there's no LED panel or Wi-Fi to set: those live on the board.
+  const serverOnly = $derived(bundled && target === 'tracker');
+  const what = $derived(target === 'board' ? 'the LED board' : 'the tracker');
+  const followUrl = $derived(`http://${location.hostname}:${feedPort}`);
+
   const obj = (v: unknown): Json => (typeof v === 'object' && v !== null && !Array.isArray(v) ? (v as Json) : {});
   const str = (v: unknown, d = ''): string => (typeof v === 'string' ? v : d);
   const num = (v: unknown, d: number): number => (typeof v === 'number' && Number.isFinite(v) ? v : d);
@@ -213,21 +225,29 @@
 
   const dirty = $derived(form !== null && JSON.stringify(form) !== saved);
 
-  async function load(): Promise<void> {
+  /** True when the settings loaded. */
+  async function load(): Promise<boolean> {
     status = { kind: '', text: '' };
     badField = '';
     try {
-      const r = await api.get<{ configured: boolean; config?: Json; secrets?: Json }>('/api/tracker-admin/settings');
+      const r = await api.get<{ configured: boolean; bundled?: boolean; board?: boolean; feedPort?: number; config?: Json; secrets?: Json }>(
+        `/api/tracker-admin/settings${q}`,
+      );
+      bundled = r.bundled === true;
+      hasBoard = r.board === true;
+      if (typeof r.feedPort === 'number') feedPort = r.feedPort;
       if (!r.configured) {
         phase = 'unconfigured';
-        return;
+        return false;
       }
       form = toForm(r.config ?? {}, r.secrets ?? {});
       saved = JSON.stringify(form);
       phase = 'ready';
+      return true;
     } catch (err) {
-      loadError = err instanceof ApiError && err.detail ? err.detail : 'Couldn’t load the tracker settings.';
+      loadError = err instanceof ApiError && err.detail ? err.detail : `Couldn’t load the settings of ${what}.`;
       phase = 'error';
+      return false;
     }
   }
 
@@ -237,10 +257,11 @@
     status = { kind: '', text: '' };
     badField = '';
     try {
-      await api.put('/api/tracker-admin/settings', toPayload(form));
-      status = { kind: 'ok', text: '✓ Saved on the tracker and applied. LED RGB order and GPIO changes need a restart.' };
+      await api.put(`/api/tracker-admin/settings${q}`, toPayload(form));
+      const done = serverOnly ? '✓ Saved and applied.' : `✓ Saved on ${what} and applied. LED RGB order and GPIO changes need a restart.`;
+      status = { kind: 'ok', text: done };
       await load();
-      status = { kind: 'ok', text: '✓ Saved on the tracker and applied. LED RGB order and GPIO changes need a restart.' };
+      status = { kind: 'ok', text: done };
       void loadStatus();
     } catch (err) {
       if (err instanceof ApiError) {
@@ -257,11 +278,11 @@
     confirmRestart = false;
     status = { kind: '', text: 'Restarting…' };
     try {
-      await api.post('/api/tracker-admin/restart', {});
-      status = { kind: 'ok', text: '✓ Restarting — the LED display goes dark for a few seconds.' };
+      await api.post(`/api/tracker-admin/restart${q}`, {});
+      status = { kind: 'ok', text: serverOnly ? '✓ Restarting — flights and weather pause for about 20 seconds.' : '✓ Restarting — the LED display goes dark for a few seconds.' };
       setTimeout(() => void loadStatus(), 10_000);
     } catch (err) {
-      status = { kind: 'err', text: err instanceof ApiError && err.detail ? err.detail : 'Couldn’t restart the tracker.' };
+      status = { kind: 'err', text: err instanceof ApiError && err.detail ? err.detail : `Couldn’t restart ${what}.` };
     }
   }
 
@@ -287,7 +308,7 @@
   let statusError = $state(false);
   async function loadStatus(): Promise<void> {
     try {
-      const r = await api.get<{ system: Sys | null; usage: Json | null }>('/api/tracker-admin/status');
+      const r = await api.get<{ system: Sys | null; usage: Json | null }>(`/api/tracker-admin/status${q}`);
       sys = r.system;
       usage = r.usage;
       statusError = false;
@@ -325,7 +346,7 @@
 
   async function loadWifi(): Promise<void> {
     try {
-      const r = await api.get<{ wifi: { connected_ssid?: string | null; ip_address?: string; networks?: Net[]; error?: string } }>('/api/tracker-admin/wifi');
+      const r = await api.get<{ wifi: { connected_ssid?: string | null; ip_address?: string; networks?: Net[]; error?: string } }>(`/api/tracker-admin/wifi${q}`);
       if (r.wifi.error) throw new Error(r.wifi.error);
       wifi = { connected_ssid: r.wifi.connected_ssid ?? null, ip_address: r.wifi.ip_address ?? '', networks: r.wifi.networks ?? [] };
       wifiErr = '';
@@ -336,7 +357,7 @@
   async function scan(): Promise<void> {
     scanning = true;
     try {
-      const r = await api.post<{ scan: { networks?: Net[]; error?: string } }>('/api/tracker-admin/wifi/scan', {});
+      const r = await api.post<{ scan: { networks?: Net[]; error?: string } }>(`/api/tracker-admin/wifi/scan${q}`, {});
       if (r.scan.error) throw new Error(r.scan.error);
       scanned = r.scan.networks ?? [];
     } catch (err) {
@@ -366,7 +387,7 @@
     wBusy = true;
     wResult = { kind: 'info', text: `Connecting the tracker to ${wSsid}… (up to 30 seconds)` };
     try {
-      const r = await api.post<{ success?: boolean; switched?: boolean; message?: string; error?: string }>('/api/tracker-admin/wifi/connect', {
+      const r = await api.post<{ success?: boolean; switched?: boolean; message?: string; error?: string }>(`/api/tracker-admin/wifi/connect${q}`, {
         ssid: wSsid.trim(),
         password: wPass,
       });
@@ -380,11 +401,25 @@
     }
   }
 
-  $effect(() => {
-    void load();
+  async function loadAll(): Promise<void> {
+    phase = 'loading';
+    form = null;
+    sys = null;
+    usage = null;
+    wifi = null;
+    scanned = null;
+    wResult = null;
+    const ready = await load();
     void loadStatus();
-    void loadWifi();
+    if (!serverOnly && ready) void loadWifi();
+  }
+  $effect(() => {
+    void target; // reload when switching between the server and the board
+    void loadAll();
   });
+  function choose(t: 'tracker' | 'board'): void {
+    if (t !== target && !dirty) target = t;
+  }
 
   const bad = (k: string): boolean => badField.endsWith(`.${k}`);
 </script>
@@ -394,21 +429,42 @@
   <div class="page-head">
     <a class="btn icon ghost" href="#/settings" aria-label="Back to Settings"><Icon name="left" /></a>
     <h1>Plane tracker</h1>
-    <span class="muted">Settings for the LED tracker Pi, saved on the tracker itself</span>
+    <span class="muted">
+      {#if target === 'board'}The LED board Pi’s own settings, saved on the board
+      {:else if bundled}The tracker running on this server: what it looks for and which APIs it uses
+      {:else}Settings for the LED tracker Pi, saved on the tracker itself{/if}
+    </span>
   </div>
+  {#if hasBoard}
+    <div class="seg" role="group" aria-label="Which tracker">
+      <button class:on={target === 'tracker'} aria-pressed={target === 'tracker'} disabled={dirty && target !== 'tracker'} title={dirty ? 'Save or reload your changes first' : undefined} onclick={() => choose('tracker')}>{bundled ? 'This server' : 'Tracker'}</button>
+      <button class:on={target === 'board'} aria-pressed={target === 'board'} disabled={dirty && target !== 'board'} title={dirty ? 'Save or reload your changes first' : undefined} onclick={() => choose('board')}>LED board</button>
+    </div>
+  {/if}
 
   {#if phase === 'loading'}
     <p class="muted">Loading the tracker’s settings…</p>
   {:else if phase === 'unconfigured'}
     <section class="card section">
-      <h2>The hub doesn’t know where the tracker is</h2>
-      <p class="muted">Set <code>TRACKER_URL</code> in <code>deploy/hub.env</code> to the tracker’s address (for example <code>http://192.168.1.60:8080</code>), then run <code>docker compose up -d hub</code>.</p>
+      {#if target === 'board'}
+        <h2>The hub doesn’t know where the LED board is</h2>
+        <p class="muted">Set <code>LED_BOARD_URL</code> in <code>deploy/hub.env</code> to the board Pi’s tracker address (for example <code>http://192.168.1.60:8080</code>), then run <code>docker compose up -d hub</code>.</p>
+      {:else}
+        <h2>The hub doesn’t know where the tracker is</h2>
+        <p class="muted">With docker compose the tracker runs on this server and is set up for you (<code>docker compose up -d tracker hub</code>). Otherwise set <code>TRACKER_URL</code> in <code>deploy/hub.env</code> to the tracker’s address (for example <code>http://192.168.1.60:8080</code>), then run <code>docker compose up -d hub</code>.</p>
+      {/if}
     </section>
   {:else if phase === 'error'}
     <section class="card section">
-      <h2>Couldn’t reach the plane tracker</h2>
+      <h2>Couldn’t reach {what}</h2>
       <p class="muted">{loadError}</p>
-      <p class="muted">Check that the LED Pi is on and its address in <code>TRACKER_URL</code> is right.</p>
+      {#if target === 'board'}
+        <p class="muted">Check that the LED board Pi is on and its address in <code>LED_BOARD_URL</code> is right.</p>
+      {:else if bundled}
+        <p class="muted">It may still be starting. On the server: <code>docker compose ps tracker</code> and <code>docker compose logs tracker</code>.</p>
+      {:else}
+        <p class="muted">Check that the LED Pi is on and its address in <code>TRACKER_URL</code> is right.</p>
+      {/if}
       <div class="row"><button class="btn" onclick={() => { phase = 'loading'; void load(); }}><Icon name="reload" size={18} /> Try again</button></div>
     </section>
   {:else if form}
@@ -422,7 +478,7 @@
         {@const fa = Number(usage?.FlightAware ?? 0)}
         {@const fr = Number(usage?.FR24 ?? 0)}
         <div class="stat-grid">
-          <div class="stat"><span class="k">Pi uptime</span><span class="v">{dur(sys.uptime_secs)}</span></div>
+          <div class="stat"><span class="k">{serverOnly ? 'Server uptime' : 'Pi uptime'}</span><span class="v">{dur(sys.uptime_secs)}</span></div>
           <div class="stat"><span class="k">Service uptime</span><span class="v">{dur(sys.service_uptime_secs)}</span></div>
           <div class="stat" class:warn={t !== null && t >= 70}>
             <span class="k">CPU temp</span>
@@ -494,6 +550,7 @@
       </div>
     </details>
 
+    {#if !serverOnly}
     <details class="card group" open>
       <summary>Display</summary>
       <div class="grid">
@@ -537,6 +594,7 @@
         <label class="field" class:bad={bad('forecast_hourly_end')}><span>Hourly window end</span><input id="f-forecast_hourly_end" type="time" bind:value={form.forecast_hourly_end} /></label>
       </div>
     </details>
+    {/if}
 
     <details class="card group" open>
       <summary>Flights</summary>
@@ -579,13 +637,25 @@
       </div>
     </details>
 
+    {#if !serverOnly}
     <details class="card group" open>
       <summary>Master / slave</summary>
+      {#if target === 'board' && bundled}
+        <div class="follow">
+          {#if form.master_tracker === followUrl}
+            <p><strong>✓ The board follows this server.</strong> It shows the flights, weather and alerts the server finds, and spends no API credits of its own.</p>
+          {:else}
+            <p>Let the board show what this server finds (one set of API keys, used once):</p>
+            <button class="btn" onclick={() => form && (form.master_tracker = followUrl)}>Follow this server</button>
+            <small class="muted">Sets the master to <code>{followUrl}</code>, then <strong>Save &amp; apply</strong> and <strong>Restart tracker</strong>. Use the server’s LAN address here if the board can’t reach this name.</small>
+          {/if}
+        </div>
+      {/if}
       <div class="grid">
         <label class="field" class:bad={bad('master_tracker')}>
           <span>Master tracker hostname</span>
           <input id="f-master_tracker" spellcheck="false" autocomplete="off" bind:value={form.master_tracker} />
-          <small>Leave blank if this is the master</small>
+          <small>Leave blank if this is the master. A Pi hostname, or a base URL such as {followUrl}</small>
         </label>
         <label class="field" class:bad={badField.includes('other_tracker_hostnames')}>
           <span>Other tracker hostnames</span>
@@ -594,6 +664,7 @@
         </label>
       </div>
     </details>
+    {/if}
 
     <details class="card group" open>
       <summary>API sources &amp; order</summary>
@@ -642,6 +713,7 @@
       </div>
     </details>
 
+    {#if !serverOnly}
     <details class="card group" open>
       <summary>Wi-Fi</summary>
       {#if wifiErr}
@@ -683,12 +755,13 @@
       <div class="row"><button class="btn" disabled={wBusy} onclick={() => void connect()}>Connect the tracker</button></div>
       {#if wWarn}
         <div class="warnbox" role="alert">
-          <p><strong>This moves the tracker to a different network.</strong> If the new network gives it a different address, HomeBase loses it until you update <code>TRACKER_URL</code> in hub.env.</p>
+          <p><strong>This moves the tracker to a different network.</strong> If the new network gives it a different address, HomeBase loses it until you update <code>{target === 'board' ? 'LED_BOARD_URL' : 'TRACKER_URL'}</code> in hub.env.</p>
           <div class="row"><button class="btn primary" onclick={() => void connect(true)}>Connect anyway</button><button class="btn" onclick={() => (wWarn = false)}>Cancel</button></div>
         </div>
       {/if}
       {#if wResult}<p class={`wres ${wResult.kind}`} role="status">{wResult.text}</p>{/if}
     </details>
+    {/if}
 
   {/if}
 </div>
@@ -696,14 +769,14 @@
   <div class="actions">
     <button class="btn primary" disabled={busy || !dirty} onclick={save}>{busy ? 'Saving…' : 'Save & apply'}</button>
     <button class="btn" disabled={busy} onclick={() => void load()}>Reload</button>
-    <button class="btn danger" onclick={() => (confirmRestart = true)}><Icon name="reload" size={18} /> Restart tracker</button>
+    <button class="btn danger" onclick={() => (confirmRestart = true)}><Icon name="reload" size={18} /> {target === 'board' ? 'Restart board' : 'Restart tracker'}</button>
     {#if status.text}<span class={`msg ${status.kind}`} role="status">{status.text}</span>{:else if dirty}<span class="msg muted">Unsaved changes</span>{/if}
   </div>
 {/if}
 </div>
 
-<Dialog bind:open={confirmRestart} title="Restart the plane tracker?" width={460}>
-  <p class="muted">The LED display goes dark for a few seconds while the tracker app restarts.</p>
+<Dialog bind:open={confirmRestart} title={target === 'board' ? 'Restart the LED board?' : 'Restart the plane tracker?'} width={460}>
+  <p class="muted">{serverOnly ? 'Flights and weather pause for about 20 seconds while the tracker restarts.' : 'The LED display goes dark for a few seconds while the tracker app restarts.'}</p>
   <div class="row end">
     <button class="btn" onclick={() => (confirmRestart = false)}>Cancel</button>
     <button class="btn danger" onclick={restart}>Restart</button>
@@ -711,6 +784,23 @@
 </Dialog>
 
 <style>
+  .seg {
+    align-self: flex-start;
+    margin-bottom: 16px;
+  }
+  .follow {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px 14px;
+    padding: 14px 16px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+  }
+  .follow p {
+    margin: 0;
+    flex-basis: 100%;
+  }
   .screen-wrap {
     height: 100%;
     display: flex;

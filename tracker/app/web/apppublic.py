@@ -177,6 +177,12 @@ def farthest_log_page():
 def tracked_json():
     return jsonify(load_json(TRACKED_FILE, {"callsign": ""}))
 
+# HomeBase patch: the tracked flight's live position (written by overhead.py
+# each cycle) for the HomeBase screens. Read-only; not part of the LED feed.
+@app.get("/homebase/tracked/live")
+def homebase_tracked_live():
+    return jsonify(load_json(os.path.join(BASE_DIR, "tracked_live.json"), {}))
+
 @app.post("/tracked/lookup")
 def tracked_lookup():
     """

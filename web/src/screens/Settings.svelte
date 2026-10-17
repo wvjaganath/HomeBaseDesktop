@@ -144,8 +144,15 @@
 
   <section class="card">
     <h2><Icon name="plane" /> Plane tracker</h2>
-    <p class="muted">Location and zone, display and night dimming, flights, API keys and order, master/slave and Wi-Fi for the LED tracker Pi: the same settings as its own page, saved on the tracker.</p>
-    <div class="row"><a class="btn" href="#/tracker-settings">Open plane tracker settings</a></div>
+    {#if hub.config?.trackerBundled}
+      <p class="muted">The tracker runs on this server: location and zone, flights, alerts, API keys and order. The LED board’s own settings (brightness, panel, Wi-Fi) are there too when <code>LED_BOARD_URL</code> is set.</p>
+    {:else}
+      <p class="muted">Location and zone, display and night dimming, flights, API keys and order, master/slave and Wi-Fi for the LED tracker Pi: the same settings as its own page, saved on the tracker.</p>
+    {/if}
+    <div class="row">
+      <a class="btn" href="#/tracker-settings">Open plane tracker settings</a>
+      <a class="btn" href="#/tracker/stats"><Icon name="chart" size={18} /> Stats &amp; records</a>
+    </div>
   </section>
 
   <section class="card">

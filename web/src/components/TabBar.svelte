@@ -32,7 +32,7 @@
   <img class="logo" src="/icons/icon.svg" alt="HomeBase" width="40" height="40" />
   {#each items as item, i (item.tab)}
     {#if !kiosk && (i === screens.length || i === screens.length + modules.length)}<span class="sep" aria-hidden="true"></span>{/if}
-    <a href={`#/${item.tab}`} class={`t-${item.tab}`} class:active={router.route === item.tab} aria-current={router.route === item.tab ? 'page' : undefined}>
+    <a href={`#/${item.tab}`} class={`t-${item.tab}`} class:active={router.route === item.tab || (item.tab === 'flights' && router.route === 'tracker')} aria-current={router.route === item.tab ? 'page' : undefined}>
       <Icon name={item.icon} size={22} />
       <span>{item.label}</span>
     </a>

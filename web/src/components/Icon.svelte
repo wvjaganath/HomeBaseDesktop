@@ -1,5 +1,6 @@
 <script lang="ts" module>
   export type IconName =
+    | 'chart'
     | 'home'
     | 'plane'
     | 'radar'
@@ -107,6 +108,8 @@
     <circle cx="8" cy="9" r="3" /><circle cx="17" cy="8" r="2.5" /><path d="M3 20c.5-3 2.5-5 5-5s4.5 2 5 5M14 15.5c.8-.3 1.8-.5 3-.5 2.3 0 3.8 1.6 4 4" />
   {:else if name === 'edit'}
     <path d="M4 20h4L19 9l-4-4L4 16zM13.5 6.5l4 4" />
+  {:else if name === 'chart'}
+    <path d="M4 20h16M7 16v-5M12 16V6M17 16v-8" />
   {:else if name === 'search'}
     <circle cx="11" cy="11" r="6.5" /><path d="M16 16l4.5 4.5" />
   {:else if name === 'close'}

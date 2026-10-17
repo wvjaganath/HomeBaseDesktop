@@ -140,6 +140,8 @@ export interface HubConfig {
   home: { lat: number; lon: number };
   radarRadiusNm: number;
   trackerEnabled: boolean;
+  /** The tracker runs on this server (docker compose). */
+  trackerBundled?: boolean;
   radarEnabled: boolean;
   mirrorEnabled: boolean;
   calendarColors: string[];
@@ -169,3 +171,82 @@ export interface DeviceSettings {
 export type Me =
   | { kind: 'user'; user: { id: string; email: string; displayName: string } | null }
   | { kind: 'device'; device: { id: string; name: string; settings: DeviceSettings }; user: { id: string; displayName: string } | null };
+
+// ---- Plane tracker stats, records and tracking (/api/tracker/*) ----
+export interface DaySummary {
+  date: string;
+  count: number;
+  byHour: number[];
+  firstSeen: string;
+  lastSeen: string;
+}
+export interface DayDetail {
+  date: string;
+  count: number;
+  firstSeen: string;
+  lastSeen: string;
+  flights: Array<{ callsign: string; time: string; hour: number; origin: string; destination: string; aircraft: string }>;
+}
+export interface FlightRecord {
+  callsign: string;
+  airline: string;
+  aircraft: string;
+  origin: { code: string; lat: number | null; lon: number | null; distance: number | null };
+  destination: { code: string; lat: number | null; lon: number | null; distance: number | null };
+  seen: string;
+  distance: number | null;
+  direction: string;
+  altitudeFt: number | null;
+  plane: { lat: number | null; lon: number | null };
+  farthest: { from: 'origin' | 'destination'; distance: number | null } | null;
+  trail: Array<[number, number]>;
+}
+export interface ApiCall {
+  time: string;
+  source: string;
+  callsign: string;
+  route: string;
+  totals: string;
+}
+export interface TrackedLeg {
+  flightId: string;
+  airline: string;
+  origin: string;
+  destination: string;
+  aircraft: string;
+  registration: string;
+  live: boolean;
+  status: string;
+  scheduledDeparture: number | null;
+  scheduledArrival: number | null;
+}
+export interface TrackedState {
+  callsign: string;
+  airline: string;
+  aircraft: string;
+  origin: { code: string; lat: number | null; lon: number | null };
+  destination: { code: string; lat: number | null; lon: number | null };
+  scheduledDeparture: number | null;
+  scheduledArrival: number | null;
+  live: null | {
+    lat: number | null;
+    lon: number | null;
+    altitudeFt: number | null;
+    groundSpeedKt: number | null;
+    headingDeg: number | null;
+    verticalFpm: number | null;
+    departed: number | null;
+    eta: number | null;
+    timeRemaining: string;
+    distanceRemaining: number | null;
+    totalDistance: number | null;
+  };
+}
+export interface RouteResult {
+  callsign: string;
+  number: string;
+  airline: string;
+  departure: string;
+  live: boolean;
+  status: string;
+}

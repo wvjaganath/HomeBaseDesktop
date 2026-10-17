@@ -16,6 +16,7 @@ export default async function dashboardRoutes(app: FastifyInstance): Promise<voi
     home: { lat: env.HOME_LAT, lon: env.HOME_LON },
     radarRadiusNm: env.RADAR_RADIUS_NM,
     trackerEnabled: env.TRACKER_URL !== '',
+    trackerBundled: env.TRACKER_BUNDLED,
     radarEnabled: radar.snapshot.data.enabled,
     mirrorEnabled: env.MIRROR_URL !== '',
     calendarColors: CALENDAR_COLORS,

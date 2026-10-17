@@ -26,3 +26,7 @@ deploy/mirror.env
 deploy/data/
 deploy/caddy-data/
 deploy/tracker-data/
+
+# Python bytecode (the bundled tracker)
+__pycache__/
+*.pyc

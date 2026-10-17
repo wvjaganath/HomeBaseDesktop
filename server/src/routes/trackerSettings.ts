@@ -1,4 +1,4 @@
-import type { FastifyInstance, FastifyReply } from 'fastify';
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { TrackerAdmin, TrackerAdminError, trackerSettingsSchema, wifiConnectSchema } from '../services/trackerAdmin.js';
 
@@ -9,7 +9,21 @@ import { TrackerAdmin, TrackerAdminError, trackerSettingsSchema, wifiConnectSche
  * write, validated before anything is sent, and rate limited.
  */
 export default async function trackerSettingsRoutes(app: FastifyInstance): Promise<void> {
-  const admin = new TrackerAdmin(app.ctx.env);
+  const { env } = app.ctx;
+  // `?target=board` edits the LED board Pi (LED_BOARD_URL) instead of the
+  // tracker this hub uses (TRACKER_URL, the bundled one in docker compose).
+  const admins = {
+    tracker: new TrackerAdmin(env.TRACKER_URL, 'TRACKER_URL', 'the plane tracker'),
+    board: new TrackerAdmin(env.LED_BOARD_URL, 'LED_BOARD_URL', 'the LED board'),
+  };
+  const targetQuery = z.object({ target: z.enum(['tracker', 'board']).default('tracker') });
+  const pick = (req: FastifyRequest): TrackerAdmin | null => {
+    const q = targetQuery.safeParse(req.query);
+    return q.success ? admins[q.data.target] : null;
+  };
+  // What the screen needs to know to show the right sections.
+  const where = { bundled: env.TRACKER_BUNDLED, board: env.LED_BOARD_URL !== '' };
+  const badTarget = (reply: FastifyReply): FastifyReply => reply.code(400).send({ error: 'invalid_input', message: 'target must be tracker or board' });
   const user = { preHandler: [app.requireUser] };
   const limit = (max: number, timeWindow: string) => ({ preHandler: [app.requireUser], config: { rateLimit: { max, timeWindow } } });
 
@@ -21,16 +35,20 @@ export default async function trackerSettingsRoutes(app: FastifyInstance): Promi
     throw err;
   };
 
-  app.get('/api/tracker-admin/settings', user, async (_req, reply) => {
+  app.get('/api/tracker-admin/settings', user, async (req, reply) => {
+    const admin = pick(req);
+    if (!admin) return badTarget(reply);
     try {
-      return { configured: true, ...(await admin.getSettings()) };
+      return { configured: true, ...where, ...(await admin.getSettings()) };
     } catch (err) {
-      if (err instanceof TrackerAdminError && err.code === 'not_configured') return { configured: false };
+      if (err instanceof TrackerAdminError && err.code === 'not_configured') return { configured: false, ...where };
       return fail(reply, err);
     }
   });
 
   app.put('/api/tracker-admin/settings', limit(20, '1 minute'), async (req, reply) => {
+    const admin = pick(req);
+    if (!admin) return badTarget(reply);
     const parsed = trackerSettingsSchema.safeParse(req.body);
     if (!parsed.success) {
       const issue = parsed.error.issues[0];
@@ -39,7 +57,7 @@ export default async function trackerSettingsRoutes(app: FastifyInstance): Promi
     }
     try {
       await admin.saveSettings(parsed.data);
-      req.log.info({ event: 'tracker_settings_saved', by: req.userId }, 'plane tracker settings saved');
+      req.log.info({ event: 'tracker_settings_saved', by: req.userId, target: admin === admins.board ? 'board' : 'tracker' }, 'plane tracker settings saved');
       return { ok: true };
     } catch (err) {
       return fail(reply, err);
@@ -47,6 +65,8 @@ export default async function trackerSettingsRoutes(app: FastifyInstance): Promi
   });
 
   app.post('/api/tracker-admin/restart', limit(3, '1 minute'), async (req, reply) => {
+    const admin = pick(req);
+    if (!admin) return badTarget(reply);
     try {
       await admin.restart();
       req.log.info({ event: 'tracker_restarted', by: req.userId }, 'plane tracker restart requested');
@@ -56,7 +76,9 @@ export default async function trackerSettingsRoutes(app: FastifyInstance): Promi
     }
   });
 
-  app.get('/api/tracker-admin/status', user, async (_req, reply) => {
+  app.get('/api/tracker-admin/status', user, async (req, reply) => {
+    const admin = pick(req);
+    if (!admin) return badTarget(reply);
     try {
       return await admin.status();
     } catch (err) {
@@ -64,7 +86,9 @@ export default async function trackerSettingsRoutes(app: FastifyInstance): Promi
     }
   });
 
-  app.get('/api/tracker-admin/wifi', user, async (_req, reply) => {
+  app.get('/api/tracker-admin/wifi', user, async (req, reply) => {
+    const admin = pick(req);
+    if (!admin) return badTarget(reply);
     try {
       return { wifi: await admin.wifiStatus() };
     } catch (err) {
@@ -73,7 +97,9 @@ export default async function trackerSettingsRoutes(app: FastifyInstance): Promi
   });
 
   // A scan changes nothing but takes the radio for a few seconds: POST + limit.
-  app.post('/api/tracker-admin/wifi/scan', limit(6, '1 minute'), async (_req, reply) => {
+  app.post('/api/tracker-admin/wifi/scan', limit(6, '1 minute'), async (req, reply) => {
+    const admin = pick(req);
+    if (!admin) return badTarget(reply);
     try {
       return { scan: await admin.wifiScan() };
     } catch (err) {
@@ -82,6 +108,8 @@ export default async function trackerSettingsRoutes(app: FastifyInstance): Promi
   });
 
   app.post('/api/tracker-admin/wifi/connect', limit(5, '10 minutes'), async (req, reply) => {
+    const admin = pick(req);
+    if (!admin) return badTarget(reply);
     const parsed = wifiConnectSchema.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: 'invalid_input', message: 'Enter the network name (and password if it has one).' });
     let r: { status: number; body: unknown };

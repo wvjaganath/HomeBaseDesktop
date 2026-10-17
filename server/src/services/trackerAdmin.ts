@@ -1,5 +1,4 @@
 import { z } from 'zod';
-import type { Env } from '../env.js';
 import { FetchError, safeFetch } from '../security/safeFetch.js';
 
 /**
@@ -30,6 +29,21 @@ const isLatLon = (v: string): boolean => {
   const [a, b] = parts.map(Number);
   return a !== undefined && b !== undefined && Number.isFinite(a) && Number.isFinite(b) && Math.abs(a) <= 90 && Math.abs(b) <= 180;
 };
+// A slave tracker takes its master as a Pi hostname (-> http://<name>.local:8080)
+// or a full base URL, e.g. HomeBase's feed http://192.168.1.20:8081.
+const isMasterUrl = (v: string): boolean => {
+  if (v.length > 200 || !/^https?:\/\//.test(v)) return false;
+  try {
+    const u = new URL(v);
+    return u.username === '' && u.password === '' && (u.pathname === '/' || u.pathname === '') && u.search === '' && u.hash === '' && !v.endsWith('/');
+  } catch {
+    return false;
+  }
+};
+const masterTracker = z
+  .string()
+  .max(253)
+  .refine((v) => v === '' || isHostname(v) || isMasterUrl(v), 'Use a hostname like plane-clock, or a base URL like http://192.168.1.20:8081');
 // API keys: printable, no spaces. Masked values from the tracker ("abcd****wxyz")
 // pass through unchanged and the tracker keeps the stored key.
 const secret = z.string().max(300).regex(/^[\x21-\x7e]*$/, 'Keys can’t contain spaces');
@@ -78,7 +92,7 @@ export const trackerSettingsSchema = z.strictObject({
     }),
     stats: z.strictObject({ stats_log_days: z.number().int().min(0).max(36_500) }),
     master_slave: z.strictObject({
-      master_tracker: z.union([z.literal(''), hostname]),
+      master_tracker: masterTracker,
       other_tracker_hostnames: z.array(hostname).max(20),
     }),
     api_sources: z.strictObject({
@@ -135,33 +149,45 @@ export function mergeTrackerConfig(current: Json, next: Json): Json {
   return out;
 }
 
+/** A tracker request's result: status, parsed JSON (or null) and the raw text. */
+export interface TrackerReply {
+  status: number;
+  body: unknown;
+  text: string;
+}
+
 /**
- * Talks to the tracker's admin endpoints. Only these paths are ever called,
- * and only on TRACKER_URL's host (it must never come from a request).
+ * Base for talking to a plane tracker's Flask app. Subclasses call fixed,
+ * literal paths only, and only on the configured base URL's host (it comes
+ * from hub settings and must never come from a request).
  */
-export class TrackerAdmin {
+export class TrackerClient<P extends string> {
   private readonly host: string;
 
-  constructor(private readonly env: Env) {
-    this.host = env.TRACKER_URL ? new URL(env.TRACKER_URL).hostname : '';
+  constructor(
+    private readonly baseUrl: string,
+    private readonly setting = 'TRACKER_URL',
+    private readonly what = 'the plane tracker',
+  ) {
+    this.host = baseUrl ? new URL(baseUrl).hostname : '';
   }
 
   get configured(): boolean {
-    return this.env.TRACKER_URL !== '';
+    return this.baseUrl !== '';
   }
 
-  private async call(
-    path: '/api/config' | '/api/restart' | '/api/system' | '/api/usage' | '/api/wifi/status' | '/api/wifi/scan' | '/api/wifi/connect',
-    opts: { method?: 'GET' | 'POST'; json?: unknown; timeoutMs?: number } = {},
-  ): Promise<{ status: number; body: unknown }> {
-    if (!this.configured) throw new TrackerAdminError('TRACKER_URL isn’t set in hub.env', 'not_configured');
+  protected async call(
+    path: P,
+    opts: { method?: 'GET' | 'POST'; json?: unknown; timeoutMs?: number; maxBytes?: number } = {},
+  ): Promise<TrackerReply> {
+    if (!this.configured) throw new TrackerAdminError(`${this.setting} isn’t set in hub.env`, 'not_configured');
     try {
-      const res = await safeFetch(`${this.env.TRACKER_URL}${path}`, {
+      const res = await safeFetch(`${this.baseUrl}${path}`, {
         allowHosts: [this.host],
         allowHttp: true,
-        allowPrivate: true, // the tracker lives on the LAN by design
+        allowPrivate: true, // the tracker lives on the LAN / Docker network by design
         timeoutMs: opts.timeoutMs ?? 8_000,
-        maxBytes: 1024 * 1024,
+        maxBytes: opts.maxBytes ?? 1024 * 1024,
         method: opts.method ?? 'GET',
         json: opts.json,
         allowErrorStatus: true,
@@ -172,13 +198,18 @@ export class TrackerAdmin {
       } catch {
         body = null;
       }
-      return { status: res.status, body };
+      return { status: res.status, body, text: res.bodyText };
     } catch (err) {
       const why = err instanceof FetchError || err instanceof Error ? err.message : 'unknown error';
-      throw new TrackerAdminError(`Couldn’t reach the plane tracker (${why})`, 'unreachable');
+      throw new TrackerAdminError(`Couldn’t reach ${this.what} (${why})`, 'unreachable');
     }
   }
+}
 
+type AdminPath = '/api/config' | '/api/restart' | '/api/system' | '/api/usage' | '/api/wifi/status' | '/api/wifi/scan' | '/api/wifi/connect';
+
+/** The tracker's admin endpoints (settings, restart, status, Wi-Fi). */
+export class TrackerAdmin extends TrackerClient<AdminPath> {
   async getSettings(): Promise<{ config: Json; secrets: Json }> {
     const r = await this.call('/api/config');
     const parsed = trackerConfigResponse.safeParse(r.body);

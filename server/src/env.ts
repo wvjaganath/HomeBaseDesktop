@@ -16,6 +16,14 @@ function isIpOrCidr(s: string): boolean {
 
 const bool = z.enum(['true', 'false']).transform((v) => v === 'true');
 
+/** A LAN base URL such as http://host:8080 (no path); '' turns the feature off. */
+const baseUrl = (name: string, example: string) =>
+  z
+    .string()
+    .default('')
+    .refine((v) => v === '' || /^https?:\/\/[^/\s]+\/?$/.test(v), { message: `${name} must be a base URL like ${example} (no path)` })
+    .transform((v) => v.replace(/\/$/, ''));
+
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('production'),
   HOST: z.string().default('0.0.0.0'),
@@ -56,13 +64,13 @@ const envSchema = z.object({
   UNITS: z.enum(['imperial', 'metric']).default('imperial'),
   TIMEZONE: z.string().default('UTC'),
 
-  TRACKER_URL: z
-    .string()
-    .default('')
-    .refine((v) => v === '' || /^https?:\/\/[^/\s]+\/?$/.test(v), {
-      message: 'TRACKER_URL must be a base URL like http://planetracker.local:8080 (no path)',
-    })
-    .transform((v) => v.replace(/\/$/, '')),
+  TRACKER_URL: baseUrl('TRACKER_URL', 'http://planetracker.local:8080'),
+  // true when the tracker runs on this server (docker-compose's `tracker`
+  // service). The screens then hide the LED-only settings (Wi-Fi, panel).
+  TRACKER_BUNDLED: bool.default(false),
+  // Optional: the LED board Pi's own tracker web UI, so its display settings
+  // (brightness, panel, Wi-Fi, which server it follows) can be edited here too.
+  LED_BOARD_URL: baseUrl('LED_BOARD_URL', 'http://plane-clock.local:8080'),
 
   // Internal URL of the MagicMirror² container (Docker network only). Empty = no Mirror tab.
   MIRROR_URL: z

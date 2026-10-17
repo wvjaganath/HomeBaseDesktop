@@ -34,7 +34,10 @@
 <div class="flights" class:led={theme === 'led'}>
   <TopBar compact />
   {#if !hub.isKiosk}
-    <a class="gear btn icon" href="#/tracker-settings" aria-label="Plane tracker settings" title="Plane tracker settings"><Icon name="settings" /></a>
+    <div class="corner">
+      <a class="btn icon" href="#/tracker/stats" aria-label="Flight stats, records and tracking" title="Stats, closest & farthest, track a flight"><Icon name="chart" /></a>
+      <a class="btn icon" href="#/tracker-settings" aria-label="Plane tracker settings" title="Plane tracker settings"><Icon name="settings" /></a>
+    </div>
   {/if}
   {#if current}
     <section class="board">
@@ -72,17 +75,21 @@
     </section>
   {/if}
   {#if tracked}
-    <div class="tracked"><span class="tag">Tracking</span><span class="mono">{tracked.callsign}</span><span class="muted">Live tracking runs on the LED tracker; details appear here when it's airborne.</span></div>
+    <div class="tracked"><span class="tag">Tracking</span><span class="mono">{tracked.callsign}</span><span class="muted">Details appear here when it’s airborne.</span>{#if !hub.isKiosk}<a class="push" href="#/tracker/track">Tracking details</a>{/if}</div>
   {/if}
   <AlertsBar />
 </div>
 
 <style>
-  .gear {
+  .corner {
     position: fixed;
     right: 28px;
     bottom: 24px;
     z-index: 5;
+    display: flex;
+    gap: 10px;
+  }
+  .corner .btn {
     background: color-mix(in srgb, var(--bg) 85%, transparent);
   }
   .flights {
@@ -112,6 +119,9 @@
     gap: 12px;
   }
   .others li,
+  .tracked .push {
+    margin-left: auto;
+  }
   .tracked {
     display: flex;
     align-items: center;

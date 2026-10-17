@@ -10,6 +10,7 @@ What runs on the PC (`docker compose`):
 | `caddy` | HTTPS for every browser, using its own local certificate authority | `https://<pc>:8443`, `http://<pc>:8080` → redirects to https |
 | `hub` | API, web app, sync for the iPhones, plane tracker + radar + calendar | `http://<pc>:3000` (the iPhone app's saved address) |
 | `magicmirror` | MagicMirror² for the Mirror tab | nowhere directly: only through the hub at `/mirror/` |
+| `tracker` | The plane tracker (its-a-plane-python, bundled in `tracker/`), headless: finds the flights, looks up routes, weather, alerts, ISS | nowhere directly: the hub reads it, and the LED board reads its feed on `http://<pc>:8081` |
 
 ## 0. Dependencies (already pinned)
 
@@ -34,7 +35,7 @@ sudo apt update && sudo apt install -y unattended-upgrades ufw
 sudo dpkg-reconfigure -f noninteractive unattended-upgrades
 # Firewall: SSH + HomeBase from the home LAN only (adjust the subnet).
 sudo ufw default deny incoming
-for p in 22 8443 8080 3000; do sudo ufw allow from 192.168.1.0/24 to any port $p proto tcp; done
+for p in 22 8443 8080 3000 8081; do sudo ufw allow from 192.168.1.0/24 to any port $p proto tcp; done
 sudo ufw enable
 ```
 
@@ -58,12 +59,12 @@ git clone <this repo> homebase-desktop && cd homebase-desktop/deploy
 ./pin-images.sh                     # base images pinned by digest → deploy/.env
 $EDITOR .env                        # set HUB_HOSTS=192.168.1.20  (the PC's LAN IP, plus a name if you have one)
 cp hub.env.example hub.env && chmod 600 hub.env
-$EDITOR hub.env                     # JWT_SECRET, HOME_LAT/LON, TRACKER_URL, ADSB_CONTACT …
+$EDITOR hub.env                     # JWT_SECRET, HOME_LAT/LON, ADSB_CONTACT … (LED_BOARD_URL optional, §5)
 cp mirror.env.example mirror.env && chmod 600 mirror.env   # filled in at step 5
-mkdir -p data backups caddy-data
-sudo chown -R 10001:10001 data backups caddy-data && sudo chmod 700 data backups caddy-data
+mkdir -p data backups caddy-data tracker-data
+sudo chown -R 10001:10001 data backups caddy-data tracker-data && sudo chmod 700 data backups caddy-data tracker-data
 docker compose build
-docker compose up -d hub caddy
+docker compose up -d tracker hub caddy
 docker compose run --rm logos       # fetch the airline logo set (re-run monthly)
 docker compose logs -f hub
 ```
@@ -178,14 +179,48 @@ The Pi boots straight into the hub full-screen. Change what it shows (start tab,
 LED or Clean board, night mode, rotation) from **Settings → Screens** on any
 computer; it updates within seconds.
 
-## 5. Plane tracker settings
+## 5. Plane tracker
 
-**Settings → Plane tracker** (or the gear button on the Flights tab) edits the LED
-tracker Pi's own settings: the same fields as its `http://<tracker>:8080/config`
-page, saved on the tracker. It needs `TRACKER_URL` in `hub.env`. Most changes
-apply straight away; LED RGB order and GPIO slowdown need **Restart tracker**.
-That button only works if you did step 15 of the tracker's README ("Enable the
-web UI restart button"); otherwise restart the tracker Pi.
+The tracker runs on this PC as the `tracker` service: the original
+its-a-plane-python code, copied into `tracker/app` (see `tracker/UPSTREAM.md`),
+with no LED panel attached. It keeps its state (settings, API keys, caches,
+flight counts, records, logs) in `deploy/tracker-data`, starts empty, and has
+email alerts turned off. Its own web page isn't published; HomeBase is the UI.
+
+**First setup:** open **Settings → Plane tracker** (or the gear on the Flights
+tab) and fill in home location and zone, the API keys (AirLabs / FlightAware /
+FR24, OpenSky, Tomorrow.io) and the source order, then **Save & apply** and
+**Restart tracker**. Within a minute or two, flights show on Home and Flights.
+
+**Stats & records** (the chart button on Flights, or `#/tracker`): flights per
+day and per hour with each day's list, API usage, the closest and farthest
+flights on maps, **Track a flight** (look up a callsign or search a route, pick
+the leg; it costs API credits, so it's for signed-in people only), and the API
+call log.
+
+### The LED board follows the server
+
+The LED Pi keeps running the original tracker, as a **slave** of this one: it
+only draws, spends no API credits and needs no keys.
+
+1. Open the board's own page (`http://<board-pi>:8080/config`), set **Master
+   tracker hostname** to `http://<pc-ip>:8081` (the PC's LAN address; the
+   `8081` is `TRACKER_FEED_PORT` in `deploy/.env`), save, and restart it.
+   You can remove its API keys now.
+2. Optional, to manage the board from HomeBase too: put its address in
+   `deploy/hub.env` as `LED_BOARD_URL=http://<board-pi>:8080` and
+   `docker compose up -d hub`. **Settings → Plane tracker** then has a
+   **This server / LED board** switch; the board side has the display, panel
+   and Wi-Fi settings, and a **Follow this server** button that fills in step 1.
+
+`:8081` is Caddy answering only the six read-only feed paths a slave needs
+(`/overhead/json`, `/tracked/json/live`, `/weather/json`, `/clock/json`,
+`/iss/json`, `/airport-status/json`), only to private-network addresses; every
+other path is a 404. Check from the board: `curl http://<pc-ip>:8081/clock/json`.
+
+Logs: `docker compose logs -f tracker`. Restart: **Restart tracker** in Settings,
+or `docker compose restart tracker`. Start over: `docker compose stop tracker`,
+empty `deploy/tracker-data`, `docker compose up -d tracker`.
 
 ## 6. MagicMirror (Mirror tab)
 

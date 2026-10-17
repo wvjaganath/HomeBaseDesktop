@@ -112,6 +112,8 @@ a {
   background: var(--surface-2);
   cursor: pointer;
   font-weight: 600;
+  color: var(--text);
+  text-decoration: none;
 }
 .btn:hover {
   border-color: var(--accent);
