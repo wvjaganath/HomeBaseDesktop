@@ -2,15 +2,15 @@ import type { Tab } from './types';
 
 const TABS: Tab[] = ['home', 'flights', 'radar', 'calendar', 'notes', 'reminders', 'fitness', 'nutrition', 'health', 'mirror', 'settings'];
 
-function parse(hash: string): Tab | 'login' | 'kiosk' | 'reset' {
+function parse(hash: string): Tab | 'login' | 'kiosk' | 'reset' | 'tracker-settings' {
   const name = hash.replace(/^#\/?/, '').split(/[/?]/)[0] ?? '';
-  if (name === 'login' || name === 'kiosk' || name === 'reset') return name;
+  if (name === 'login' || name === 'kiosk' || name === 'reset' || name === 'tracker-settings') return name;
   return (TABS as string[]).includes(name) ? (name as Tab) : 'home';
 }
 
 /** Minimal hash router: #/home, #/flights, #/radar, #/calendar, #/settings. */
 class Router {
-  route = $state<Tab | 'login' | 'kiosk' | 'reset'>(parse(location.hash));
+  route = $state<Tab | 'login' | 'kiosk' | 'reset' | 'tracker-settings'>(parse(location.hash));
 
   constructor() {
     addEventListener('hashchange', () => {

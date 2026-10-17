@@ -25,8 +25,9 @@
     nutrition: () => import('./screens/Nutrition.svelte'),
     health: () => import('./screens/Health.svelte'),
     mirror: () => import('./screens/Mirror.svelte'),
+    'tracker-settings': () => import('./screens/TrackerSettings.svelte'),
   } as const;
-  const EDIT_TABS = new Set(['notes', 'reminders', 'fitness', 'nutrition', 'health', 'settings']);
+  const EDIT_TABS = new Set(['notes', 'reminders', 'fitness', 'nutrition', 'health', 'settings', 'tracker-settings']);
 
   type Phase = 'loading' | 'login' | 'unpaired' | 'ready' | 'offline';
   let phase = $state<Phase>('loading');

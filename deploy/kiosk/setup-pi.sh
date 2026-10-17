@@ -6,7 +6,7 @@
 #   sudo bash setup-pi.sh --ca homebase-ca.crt "https://<linux-pc-ip>:8443/kiosk/pair?t=hbd_xxxxxxxx"
 #
 # --ca installs the hub's local HTTPS certificate authority (see
-# deploy/README.md §6) so Chromium trusts https://<pc>:8443. Without it, use the
+# deploy/README.md §3) so Chromium trusts https://<pc>:8443. Without it, use the
 # plain http://<pc>:3000/kiosk/pair?t=… link instead.
 #
 # Get the pairing link from the hub: Settings → Screens → Add screen.
@@ -29,7 +29,7 @@ if [[ ! "$PAIR_URL" =~ ^https?://[A-Za-z0-9._:-]+/kiosk/pair\?t=hbd_[A-Za-z0-9_-
   exit 1
 fi
 if [[ "$PAIR_URL" == https://* && -z "$CA_FILE" ]]; then
-  echo "An https:// link needs the hub's certificate: add --ca homebase-ca.crt (deploy/README.md §6)." >&2
+  echo "An https:// link needs the hub's certificate: add --ca homebase-ca.crt (deploy/README.md §3)." >&2
   exit 1
 fi
 if [[ -n "$CA_FILE" ]]; then

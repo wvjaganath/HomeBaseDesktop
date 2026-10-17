@@ -1,6 +1,7 @@
 <script lang="ts">
   import AlertsBar from '../components/AlertsBar.svelte';
   import FlightHero from '../components/FlightHero.svelte';
+  import Icon from '../components/Icon.svelte';
   import TopBar from '../components/TopBar.svelte';
   import { DELAY_COLORS, distUnit, fmtInt } from '../lib/format';
   import { hub } from '../lib/hub.svelte';
@@ -32,6 +33,9 @@
 
 <div class="flights" class:led={theme === 'led'}>
   <TopBar compact />
+  {#if !hub.isKiosk}
+    <a class="gear btn icon" href="#/tracker-settings" aria-label="Plane tracker settings" title="Plane tracker settings"><Icon name="settings" /></a>
+  {/if}
   {#if current}
     <section class="board">
       <FlightHero flight={current} {units} {theme} scale="board" />
@@ -74,6 +78,13 @@
 </div>
 
 <style>
+  .gear {
+    position: fixed;
+    right: 28px;
+    bottom: 24px;
+    z-index: 5;
+    background: color-mix(in srgb, var(--bg) 85%, transparent);
+  }
   .flights {
     height: 100%;
     padding: 36px 56px 30px;

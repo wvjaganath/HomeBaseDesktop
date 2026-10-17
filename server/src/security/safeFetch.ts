@@ -21,6 +21,11 @@ export interface SafeFetchOptions {
   timeoutMs?: number;
   maxBytes?: number;
   headers?: Record<string, string>;
+  /** Default GET. POST bodies are JSON only, and POSTs never follow redirects. */
+  method?: 'GET' | 'POST';
+  json?: unknown;
+  /** Return 4xx/5xx responses (with their body) instead of throwing. */
+  allowErrorStatus?: boolean;
 }
 
 const PRIVATE_V4: Array<[number, number]> = [
@@ -65,13 +70,21 @@ export async function safeFetch(rawUrl: string, opts: SafeFetchOptions): Promise
     }
   }
 
+  const method = opts.method ?? 'GET';
   const res = await fetch(url, {
+    method,
     redirect: 'manual',
     signal: AbortSignal.timeout(opts.timeoutMs ?? 8000),
-    headers: { accept: 'application/json, text/calendar;q=0.9, */*;q=0.1', ...opts.headers },
+    headers: {
+      accept: 'application/json, text/calendar;q=0.9, */*;q=0.1',
+      ...(opts.json !== undefined ? { 'content-type': 'application/json' } : {}),
+      ...opts.headers,
+    },
+    ...(opts.json !== undefined ? { body: JSON.stringify(opts.json) } : {}),
   });
 
   if (res.status >= 300 && res.status < 400) {
+    if (method !== 'GET') throw new FetchError('unexpected redirect', res.status);
     const location = res.headers.get('location');
     if (!location) throw new FetchError('redirect without location', res.status);
     const next = new URL(location, url);
@@ -79,7 +92,7 @@ export async function safeFetch(rawUrl: string, opts: SafeFetchOptions): Promise
     if (!opts.allowHosts.includes(next.hostname)) throw new FetchError('redirect to disallowed host', res.status);
     return safeFetch(next.toString(), { ...opts, allowHosts: [next.hostname] });
   }
-  if (!res.ok) throw new FetchError(`upstream status ${res.status}`, res.status);
+  if (!res.ok && !opts.allowErrorStatus) throw new FetchError(`upstream status ${res.status}`, res.status);
 
   const max = opts.maxBytes ?? 2 * 1024 * 1024;
   const declared = Number(res.headers.get('content-length') ?? '0');

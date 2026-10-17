@@ -178,7 +178,16 @@ The Pi boots straight into the hub full-screen. Change what it shows (start tab,
 LED or Clean board, night mode, rotation) from **Settings → Screens** on any
 computer; it updates within seconds.
 
-## 5. MagicMirror (Mirror tab)
+## 5. Plane tracker settings
+
+**Settings → Plane tracker** (or the gear button on the Flights tab) edits the LED
+tracker Pi's own settings: the same fields as its `http://<tracker>:8080/config`
+page, saved on the tracker. It needs `TRACKER_URL` in `hub.env`. Most changes
+apply straight away; LED RGB order and GPIO slowdown need **Restart tracker**.
+That button only works if you did step 15 of the tracker's README ("Enable the
+web UI restart button"); otherwise restart the tracker Pi.
+
+## 6. MagicMirror (Mirror tab)
 
 MagicMirror² 2.38.0 runs in its own container with no published port. The hub
 forwards only what the page needs, to signed-in people and paired screens, and
@@ -195,7 +204,7 @@ Weather comes from Open-Meteo (no key). To change modules, edit
 "Could not write config/basepath.js" and "unable to write js/positions.js" are
 expected: the container is read-only and both files are prepared at build time.
 
-## 6. Backups
+## 7. Backups
 
 The hub backs up its database every night (03:07 by default, `BACKUP_HOUR` in
 `hub.env`) into `deploy/backups`, keeps the newest `BACKUP_KEEP` (14), and shows
@@ -221,7 +230,7 @@ Also keep `deploy/hub.env` and `deploy/mirror.env` somewhere safe (a password
 manager): without `JWT_SECRET`/`SECRETS_KEY` the stored calendar addresses can't
 be decrypted.
 
-## 7. Updating
+## 8. Updating
 
 ```bash
 ./deploy/update.sh

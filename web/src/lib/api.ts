@@ -8,6 +8,8 @@ export class ApiError extends Error {
     readonly code: string,
     /** A human-readable explanation from the hub, when it sent one. */
     readonly detail?: string,
+    /** Which input it was about (dotted path), when the hub said. */
+    readonly field?: string,
   ) {
     super(code);
     this.name = 'ApiError';
@@ -48,14 +50,16 @@ async function request<T>(method: string, path: string, body?: unknown, retry = 
   if (!res.ok) {
     let code = `http_${res.status}`;
     let detail: string | undefined;
+    let field: string | undefined;
     try {
-      const data = (await res.json()) as { error?: string; message?: string };
+      const data = (await res.json()) as { error?: string; message?: string; field?: string };
       if (data.error) code = data.error;
       if (typeof data.message === 'string') detail = data.message;
+      if (typeof data.field === 'string') field = data.field;
     } catch {
       // non-JSON error
     }
-    throw new ApiError(res.status, code, detail);
+    throw new ApiError(res.status, code, detail, field);
   }
   return (await res.json()) as T;
 }
@@ -64,5 +68,6 @@ export const api = {
   get: <T>(path: string) => request<T>('GET', path),
   post: <T>(path: string, body?: unknown) => request<T>('POST', path, body ?? {}),
   patch: <T>(path: string, body: unknown) => request<T>('PATCH', path, body),
+  put: <T>(path: string, body: unknown) => request<T>('PUT', path, body),
   del: <T>(path: string) => request<T>('DELETE', path),
 };

@@ -2,7 +2,7 @@
 #
 # Caddy runs its own small certificate authority ("tls internal"): no domain,
 # no internet exposure, no Let's Encrypt. Trust its root certificate once on
-# each computer/Pi (deploy/README.md §6) and browsers show a normal padlock.
+# each computer/Pi (deploy/README.md §3) and browsers show a normal padlock.
 #
 #   https://<HUB_HOSTS>:8443  →  hub   (all browsers, the Pi included)
 #   http://…:8080        →  308 to https (old bookmarks / screen links)

@@ -38,7 +38,7 @@
     </a>
   {/each}
   {#if !kiosk}
-    <a class="bottom" href="#/settings" class:active={router.route === 'settings'} aria-current={router.route === 'settings' ? 'page' : undefined}>
+    <a class="bottom" href="#/settings" class:active={router.route === 'settings' || router.route === 'tracker-settings'} aria-current={router.route === 'settings' ? 'page' : undefined}>
       <Icon name="settings" size={22} />
       <span>Settings</span>
     </a>

@@ -215,7 +215,8 @@ These are acceptance criteria for every screen, checked on the real Pi:
 
 ### 6.8 Security (carried over and extended)
 - LAN-only, never port-forwarded. HTTPS for every browser via Caddy and its own local CA (`tls internal`), which gives `Secure`, `__Host-` cookies; the iPhones keep plain HTTP on :3000 (bearer tokens, LAN only).
-- **Tracker proxy is allow-listed to read-only GETs** (`/overhead/json`, `/clock/json`, `/weather/json`, `/tracked/json/live`, `/iss/*`, `/nws/json`, `/airport_status/json`, `/logo/*`). The tracker's own Flask app has no auth, and its `/api/config`, `/api/restart` and `/wifi/connect` must **not** be reachable through the hub.
+- **Tracker display data is read-only GETs** (`/overhead/json`, `/clock/json`, `/weather/json`, `/tracked/json/live`, `/iss/*`, `/nws/json`, `/airport_status/json`, `/logo/*`), available to people and paired screens.
+- **Tracker settings (Settings → Plane tracker)**, added 2026-10-17 at the owner's request: the hub calls the tracker's `/api/config`, `/api/restart`, `/api/system`, `/api/usage` and `/api/wifi/{status,scan,connect}` on the owner's behalf, through fixed paths on `TRACKER_URL`'s host only. Only signed-in people can use them (never kiosk screens), behind the CSRF guard and rate limits. Every value is validated against the tracker page's own allowed values before it is sent, and settings the page doesn't show (such as `route_cache`) are kept. API keys stay masked the way the tracker masks them, and Wi-Fi passwords are passed through, never logged or stored. The tracker's own web UI still has no login, so anyone on the Wi-Fi can reach it directly; that is unchanged.
 - Device tokens are hashed at rest, scoped `display:read`, and revocable from Settings → Screens.
 - Google iCal secret URLs are stored only on the server, never sent to browsers.
 - MagicMirror is only reachable through the authenticated hub proxy.
@@ -304,7 +305,7 @@ Checked 2026-10-16 against each project's GitHub release tags. Re-check at the s
 
 **Data**
 - SQL: parameterised statements only (better-sqlite3 prepared statements); no string-built SQL. The ACL check stays server-side on every pull/push.
-- The SQLite DB and `.env` are `chmod 600`, owned by the service user. Nightly backups (SQLite online backup API) are `chmod 600` in a `700` directory; keep an off-machine copy (deploy/README.md §6).
+- The SQLite DB and `.env` are `chmod 600`, owned by the service user. Nightly backups (SQLite online backup API) are `chmod 600` in a `700` directory; keep an off-machine copy (deploy/README.md §7).
 
 ### 7.5 Infrastructure security
 
@@ -396,3 +397,4 @@ Still open (non-blocking):
 | 2026-10-17 | HTTPS moved to port **8443** by default (443 is used by another application on the Linux PC); `HTTPS_PORT`/`HTTP_PORT` in `deploy/.env` still override. Added the `users` command (list, add, reset-password) since sign-up is off and there's no reset page. |
 | 2026-10-17 | Accounts in the browser: sign-in screen has **Forgot password?** (one-time 30-minute reset link made on the PC with `users.js reset-link`) and **Create an account** (only with `ALLOW_REGISTRATION=true`); Settings → **People** (list, add a person) and **Change password** (ends other sessions). Resetting another person's password stays PC-only so one account can't take over another. Server 51/51 tests; browser test 16/16. |
 | 2026-10-17 | First account can be created from the sign-in screen ("Set up HomeBase") when the hub has none; sign-up locks again afterwards unless `ALLOW_REGISTRATION=true`. Same rule for the iPhone app's sign-up; a race for the first account lets only one through. Server 54/54 tests; browser test 5/5. |
+| 2026-10-17 | **Plane tracker settings in the browser** (Settings → Plane tracker, or the gear on Flights): every setting from the tracker's own `/config` page (location & zone, display & night dimming, flights, stats logging, master/slave, API sources with priority order and keys), its system status & API usage cards, Wi-Fi scan/connect, and Restart, saved on the LED Pi through the hub. Server 60/60 tests (6 new, against a stand-in that behaves like the tracker's Flask app); browser test 22/22. |

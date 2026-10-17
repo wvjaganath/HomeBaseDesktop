@@ -143,6 +143,12 @@
   {#if message}<p class="toast" role="status">{message}</p>{/if}
 
   <section class="card">
+    <h2><Icon name="plane" /> Plane tracker</h2>
+    <p class="muted">Location and zone, display and night dimming, flights, API keys and order, master/slave and Wi-Fi for the LED tracker Pi: the same settings as its own page, saved on the tracker.</p>
+    <div class="row"><a class="btn" href="#/tracker-settings">Open plane tracker settings</a></div>
+  </section>
+
+  <section class="card">
     <h2><Icon name="calendar" /> Google calendars</h2>
     <p class="muted">
       In Google Calendar on a computer: Settings → pick the calendar → <em>Integrate calendar</em> → copy
