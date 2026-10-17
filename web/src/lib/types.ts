@@ -144,7 +144,18 @@ export interface HubConfig {
   calendarColors: string[];
 }
 
-export type Tab = 'home' | 'flights' | 'radar' | 'calendar' | 'settings';
+export type Tab =
+  | 'home'
+  | 'flights'
+  | 'radar'
+  | 'calendar'
+  | 'notes'
+  | 'reminders'
+  | 'fitness'
+  | 'nutrition'
+  | 'health'
+  | 'mirror'
+  | 'settings';
 
 export interface DeviceSettings {
   startTab: 'home' | 'flights' | 'radar' | 'calendar';

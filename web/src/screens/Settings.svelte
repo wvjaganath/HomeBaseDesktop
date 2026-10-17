@@ -2,6 +2,7 @@
   import Icon from '../components/Icon.svelte';
   import { ApiError, api } from '../lib/api';
   import { hub } from '../lib/hub.svelte';
+  import { sync } from '../lib/sync.svelte';
   import type { CalendarSource, DeviceSettings } from '../lib/types';
 
   let { onSignedOut }: { onSignedOut: () => void } = $props();
@@ -95,6 +96,34 @@
       message = 'Link copied.';
     } catch {
       message = 'Copy failed; select the link and copy it manually.';
+    }
+  }
+
+  let exporting = $state(false);
+  /** A JSON copy of everything this account can see (the server DB is the real backup). */
+  async function exportData(): Promise<void> {
+    if (hub.me?.kind !== 'user' || !hub.me.user) return;
+    exporting = true;
+    try {
+      await sync.ensure(hub.me.user.id);
+      await sync.pull();
+      const data = {
+        exportedAt: new Date().toISOString(),
+        account: { email: hub.me.user.email, displayName: hub.me.user.displayName },
+        collections: Object.fromEntries(Object.entries($state.snapshot(sync.items)).map(([c, items]) => [c, Object.values(items)])),
+        shares: Object.values($state.snapshot(sync.shares)),
+      };
+      const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `homebase-export-${new Date().toISOString().slice(0, 10)}.json`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 10_000);
+      message = 'Export downloaded.';
+    } catch {
+      message = 'Export failed. Is the hub reachable?';
+    } finally {
+      exporting = false;
     }
   }
 
@@ -203,7 +232,10 @@
   <section class="card">
     <h2>Account</h2>
     <p class="muted">Signed in as {hub.me?.kind === 'user' ? hub.me.user?.email : ''}.</p>
-    <button class="btn" onclick={signOut}><Icon name="logout" size={18} /> Sign out</button>
+    <div class="row">
+      <button class="btn" disabled={exporting} onclick={exportData}>{exporting ? 'Preparing…' : 'Download my data (JSON)'}</button>
+      <button class="btn" onclick={() => { sync.reset(); void signOut(); }}><Icon name="logout" size={18} /> Sign out</button>
+    </div>
   </section>
 </div>
 
@@ -317,9 +349,6 @@
   }
   .error {
     color: var(--bad);
-  }
-  section > .btn {
-    align-self: flex-start;
   }
   .toast {
     padding: 12px 16px;

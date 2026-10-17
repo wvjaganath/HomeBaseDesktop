@@ -55,6 +55,17 @@ interface CachedSource {
 }
 
 const WORKOUT_SOURCE_ID = 'homebase-workouts';
+/** The iOS app and web log a workout under its weekday name; show the plan's name instead. */
+const PLAN_TYPES: Record<string, string> = {
+  Monday: 'Cardio + Core',
+  Tuesday: 'Upper Body Strength',
+  Wednesday: 'Cardio + Mobility',
+  Thursday: 'Lower Body Strength',
+  Friday: 'Full Body Circuit',
+  Saturday: 'Cardio + Core',
+  Sunday: 'Active Recovery',
+  Custom: 'Workout',
+};
 const WORKOUT_COLOR = '#60A5FA';
 
 function ymdLocal(d: Date): string {
@@ -243,7 +254,7 @@ export class CalendarService {
       out.push({
         id: `${WORKOUT_SOURCE_ID}:${r.id}`,
         sourceId: WORKOUT_SOURCE_ID,
-        title: p.data.dayType,
+        title: PLAN_TYPES[p.data.dayType] ?? p.data.dayType,
         allDay: true,
         start: p.data.date,
         end: ymdLocal(next),

@@ -38,7 +38,6 @@ COPY --from=build /src/server/package.json ./package.json
 COPY --from=build /src/server/node_modules ./node_modules
 COPY --from=build /src/server/dist ./dist
 COPY --from=build /src/server/web-dist ./web-dist
-COPY --from=build /src/server/public-legacy ./public-legacy
 
 # Unprivileged runtime user (matches `user:` in docker-compose.yml).
 USER 10001:10001

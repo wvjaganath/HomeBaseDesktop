@@ -1,4 +1,5 @@
 import { api, refreshSession } from './api';
+import { sync } from './sync.svelte';
 import type { HubConfig, Lists, Me, RadarSnapshot, TrackerState } from './types';
 
 /**
@@ -61,6 +62,8 @@ class Hub {
     });
     es.addEventListener('items', () => {
       void this.refreshLists();
+      // Editing tabs hold a full copy of the user's data; keep it current.
+      if (sync.loaded) void sync.pull().catch(() => undefined);
     });
     es.addEventListener('calendar', () => {
       this.calendarVersion += 1;

@@ -95,16 +95,8 @@ export async function buildApp(opts: BuildOptions): Promise<FastifyInstance> {
     crossOriginEmbedderPolicy: false,
   });
 
-  app.addHook('onSend', async (req, reply, payload) => {
+  app.addHook('onSend', async (_req, reply, payload) => {
     reply.header('permissions-policy', 'camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()');
-    // The legacy tracker website uses inline styles; give it a relaxed (but
-    // still script-strict) policy, scoped to its own path only.
-    if (req.url.startsWith('/legacy/')) {
-      reply.header(
-        'content-security-policy',
-        "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'self'",
-      );
-    }
     return payload;
   });
 
@@ -147,10 +139,10 @@ export async function buildApp(opts: BuildOptions): Promise<FastifyInstance> {
     app.get('/', async (_req, reply) => reply.type('text/plain').send('HomeBase hub is running. Web app not built yet (npm run build in web/).'));
   }
 
-  const legacy = path.join(serverRoot, 'public-legacy');
-  if (fs.existsSync(legacy)) {
-    await app.register(fastifyStatic, { root: legacy, prefix: '/legacy/', decorateReply: false });
-  }
+  // The old weight-loss website was retired once the web app reached parity.
+  // It kept tokens in localStorage; old bookmarks land on the new screen.
+  app.get('/legacy', async (_req, reply) => reply.redirect('/#/fitness', 301));
+  app.get('/legacy/*', async (_req, reply) => reply.redirect('/#/fitness', 301));
 
   if (opts.startServices) {
     ctx.tracker.start();

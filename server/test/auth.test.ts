@@ -146,6 +146,16 @@ describe('kiosk device tokens', () => {
   });
 });
 
+describe('retired legacy site', () => {
+  it('redirects old bookmarks to the new Weight loss screen', async () => {
+    for (const url of ['/legacy', '/legacy/', '/legacy/index.html']) {
+      const res = await app.inject({ method: 'GET', url });
+      expect(res.statusCode, url).toBe(301);
+      expect(res.headers.location).toBe('/#/fitness');
+    }
+  });
+});
+
 describe('security headers', () => {
   it('sends a strict CSP and permissions policy', async () => {
     const res = await app.inject({ method: 'GET', url: '/health' });

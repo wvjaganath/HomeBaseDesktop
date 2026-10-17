@@ -78,6 +78,16 @@ describe('calendar', () => {
     expect(halloween?.start).toBe('2026-10-31');
     expect(halloween?.end).toBe('2026-11-01');
 
+    // HomeBase workouts appear as all-day events named after the plan day.
+    db.prepare(`INSERT INTO items (collection, id, owner_id, updated_at, deleted_at, server_seq, payload) VALUES ('workout_logs', ?, ?, ?, NULL, 1, ?)`).run(
+      '00000000-0000-4000-8000-0000000000aa',
+      u.id,
+      new Date().toISOString(),
+      JSON.stringify({ date: '2026-10-13', dayType: 'Tuesday', duration: '45', note: '', exercises: [] }),
+    );
+    const withWorkout = calendar.events(u.id, '2026-10-12', '2026-10-15');
+    expect(withWorkout.find((e) => e.sourceId === 'homebase-workouts')).toMatchObject({ title: 'Upper Body Strength', allDay: true, start: '2026-10-13', end: '2026-10-14' });
+
     // The API serves the same data and never exposes the secret URL.
     const res = await app.inject({
       method: 'GET',

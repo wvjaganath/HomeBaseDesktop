@@ -6,6 +6,7 @@
   import { setTimezone } from './lib/format';
   import { hub } from './lib/hub.svelte';
   import { router } from './lib/router.svelte';
+  import { sync } from './lib/sync.svelte';
   import type { DeviceSettings, Me } from './lib/types';
   import CalendarPage from './screens/CalendarPage.svelte';
   import Flights from './screens/Flights.svelte';
@@ -13,8 +14,17 @@
   import Login from './screens/Login.svelte';
   import Settings from './screens/Settings.svelte';
 
-  // Radar (and Leaflet) load only when the tab is opened (README §6.7 budget).
-  const loadRadar = () => import('./screens/Radar.svelte');
+  // Heavier screens load only when opened (README §6.7 budget): Radar pulls in
+  // Leaflet, and the editing screens are never needed on a kiosk.
+  const lazy = {
+    radar: () => import('./screens/Radar.svelte'),
+    notes: () => import('./screens/Notes.svelte'),
+    reminders: () => import('./screens/Reminders.svelte'),
+    fitness: () => import('./screens/Fitness.svelte'),
+    nutrition: () => import('./screens/Nutrition.svelte'),
+    health: () => import('./screens/Health.svelte'),
+  } as const;
+  const EDIT_TABS = new Set(['notes', 'reminders', 'fitness', 'nutrition', 'health', 'settings']);
 
   type Phase = 'loading' | 'login' | 'unpaired' | 'ready' | 'offline';
   let phase = $state<Phase>('loading');
@@ -60,6 +70,7 @@
     setSignedOutHandler(() => {
       if (hub.me?.kind !== 'device') {
         hub.disconnect();
+        sync.reset();
         hub.me = null;
         phase = 'login';
       }
@@ -124,12 +135,14 @@
         <Home autoFocus={settings?.autoFocus ?? true} theme={settings?.boardTheme ?? 'clean'} />
       {:else if route === 'flights'}
         <Flights theme={settings?.boardTheme ?? 'led'} />
-      {:else if route === 'radar'}
-        {#await loadRadar() then { default: Radar }}
-          <Radar />
-        {:catch}
-          <div class="center muted">Couldn’t load the radar.</div>
-        {/await}
+      {:else if route in lazy && !(device && EDIT_TABS.has(route))}
+        {#key route}
+          {#await lazy[route as keyof typeof lazy]() then { default: Screen }}
+            <Screen />
+          {:catch}
+            <div class="center muted">Couldn’t load this screen. Reload to try again.</div>
+          {/await}
+        {/key}
       {:else if route === 'calendar'}
         <CalendarPage />
       {:else if route === 'settings' && !device}
