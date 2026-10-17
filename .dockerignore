@@ -6,6 +6,9 @@ server/web-dist
 .xfer
 deploy/data
 deploy/hub.env
+deploy/mirror.env
+deploy/backups
+deploy/caddy-data
 deploy/.env
 **/.env
 **/*.db

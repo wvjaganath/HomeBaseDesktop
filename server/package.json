@@ -15,11 +15,12 @@
     "lint": "eslint .",
     "test": "vitest run",
     "audit:prod": "npm audit --omit=dev --audit-level=high",
-    "logos": "node --env-file-if-exists=.env dist/scripts/fetchLogos.js"
+    "backup": "node --env-file-if-exists=.env dist/scripts/backup.js"
   },
   "dependencies": {
     "@fastify/cookie": "11.1.3",
     "@fastify/helmet": "13.1.2",
+    "@fastify/http-proxy": "11.6.4",
     "@fastify/rate-limit": "11.2.1",
     "@fastify/static": "10.1.6",
     "argon2": "0.45.1",

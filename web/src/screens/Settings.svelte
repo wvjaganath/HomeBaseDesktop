@@ -1,5 +1,6 @@
 <script lang="ts">
   import Icon from '../components/Icon.svelte';
+  import StatusPanel from '../components/StatusPanel.svelte';
   import { ApiError, api } from '../lib/api';
   import { hub } from '../lib/hub.svelte';
   import { sync } from '../lib/sync.svelte';
@@ -132,7 +133,7 @@
     onSignedOut();
   }
 
-  const tabs = ['home', 'flights', 'radar', 'calendar'] as const;
+  const tabs = ['home', 'flights', 'radar', 'calendar', 'mirror'] as const;
 </script>
 
 <div class="settings">
@@ -186,7 +187,7 @@
         <p><strong>Pairing link</strong> (shown once; treat it like a password):</p>
         <code>{newPairUrl}</code>
         <div class="row"><button class="btn" onclick={copyPair}>Copy</button><button class="btn" onclick={() => (newPairUrl = '')}>Done</button></div>
-        <p class="muted small">On the Pi: <code>sudo bash setup-pi.sh "{newPairUrl}"</code></p>
+        <p class="muted small">On the Pi: <code>sudo bash setup-pi.sh{newPairUrl.startsWith('https:') ? ' --ca homebase-ca.crt' : ''} "{newPairUrl}"</code></p>
       </div>
     {/if}
 
@@ -228,6 +229,8 @@
       </div>
     {/each}
   </section>
+
+  <StatusPanel />
 
   <section class="card">
     <h2>Account</h2>

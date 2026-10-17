@@ -14,10 +14,12 @@ WORKDIR /src
 # No compiler toolchain: better-sqlite3, argon2 and sharp ship prebuilt binaries
 # inside their npm packages, and install scripts stay disabled (.npmrc).
 COPY server/package.json server/package-lock.json server/.npmrc server/
-RUN cd server && npm ci
+# Fail the build on any known high/critical vulnerability in what ships.
+RUN cd server && npm ci && npm audit --omit=dev --audit-level=high
 
 COPY web/package.json web/package-lock.json web/.npmrc web/
-RUN cd web && npm ci
+# The web app ships as static files only; audit its runtime deps too.
+RUN cd web && npm ci && npm audit --omit=dev --audit-level=high
 
 COPY server/ server/
 COPY web/ web/

@@ -1,0 +1,77 @@
+.hb {
+  width: 420px;
+  text-align: left;
+}
+.hb-section {
+  margin-bottom: 22px;
+}
+.hb-title {
+  font-size: 15px;
+  letter-spacing: 2.5px;
+  text-transform: uppercase;
+  color: #8f9baa;
+  margin-bottom: 8px;
+}
+.hb-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 20px;
+  line-height: 1.6;
+  color: #e9eef3;
+}
+.hb-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.hb-when {
+  color: #8f9baa;
+  font-size: 16px;
+  white-space: nowrap;
+}
+.hb-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.hb-ring {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid #c4b5fd;
+  flex-shrink: 0;
+}
+.hb-overdue .hb-ring {
+  border-color: #fb923c;
+}
+.hb-overdue .hb-when {
+  color: #fb923c;
+}
+.hb-box {
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+  border: 2px solid #8f9baa;
+  flex-shrink: 0;
+}
+.hb-box-done {
+  background: #fcd34d;
+  border-color: #fcd34d;
+}
+.hb-done .hb-text {
+  color: #6b7787;
+  text-decoration: line-through;
+}
+.hb-body {
+  font-size: 18px;
+  color: #c4cdd7;
+  white-space: pre-line;
+}
+.hb-dim {
+  color: #8f9baa;
+  font-size: 18px;
+}

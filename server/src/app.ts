@@ -13,6 +13,8 @@ import authRoutes from './routes/auth.js';
 import dashboardRoutes from './routes/dashboard.js';
 import deviceRoutes from './routes/devices.js';
 import logoRoutes from './routes/logos.js';
+import mirrorRoutes from './routes/mirror.js';
+import statusRoutes from './routes/status.js';
 import shareRoutes from './routes/shares.js';
 import streamRoutes from './routes/stream.js';
 import syncRoutes from './routes/sync.js';
@@ -75,9 +77,10 @@ export async function buildApp(opts: BuildOptions): Promise<FastifyInstance> {
         defaultSrc: ["'self'"],
         scriptSrc: ["'self'"],
         styleSrc: ["'self'"],
-        imgSrc: ["'self'", 'data:', ...tileHosts, 'https://*.plnspttrs.net'],
+        // RainViewer: optional rain overlay on the desktop Radar tab.
+        imgSrc: ["'self'", 'data:', ...tileHosts, 'https://*.plnspttrs.net', 'https://tilecache.rainviewer.com'],
         fontSrc: ["'self'"],
-        connectSrc: ["'self'", 'https://api.planespotters.net'],
+        connectSrc: ["'self'", 'https://api.planespotters.net', 'https://api.rainviewer.com'],
         frameSrc: ["'self'"],
         frameAncestors: ["'self'"],
         objectSrc: ["'none'"],
@@ -85,11 +88,12 @@ export async function buildApp(opts: BuildOptions): Promise<FastifyInstance> {
         formAction: ["'self'"],
         manifestSrc: ["'self'"],
         workerSrc: ["'self'"],
-        upgradeInsecureRequests: env.COOKIE_SECURE ? [] : null,
+        upgradeInsecureRequests: env.COOKIE_SECURE === true ? [] : null,
       },
     },
     // HSTS only makes sense once the hub is served over HTTPS (Phase 7).
-    strictTransportSecurity: env.COOKIE_SECURE ? { maxAge: 31_536_000, includeSubDomains: false } : false,
+    // HSTS only when every browser route is HTTPS (it applies to all ports).
+    strictTransportSecurity: env.COOKIE_SECURE === true ? { maxAge: 31_536_000, includeSubDomains: false } : false,
     // Planespotters requires an Origin/Referer from browser clients.
     referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
     crossOriginEmbedderPolicy: false,
@@ -101,7 +105,7 @@ export async function buildApp(opts: BuildOptions): Promise<FastifyInstance> {
   });
 
   await app.register(rateLimit, { max: 600, timeWindow: '1 minute' });
-  app.addHook('onRequest', csrfGuard(env.COOKIE_SECURE));
+  app.addHook('onRequest', csrfGuard());
 
   app.setErrorHandler((err: { statusCode?: number; message: string }, req, reply) => {
     const status = err.statusCode ?? 500;
@@ -121,6 +125,8 @@ export async function buildApp(opts: BuildOptions): Promise<FastifyInstance> {
   await app.register(streamRoutes);
   await app.register(dashboardRoutes);
   await app.register(logoRoutes);
+  await app.register(mirrorRoutes);
+  await app.register(statusRoutes);
 
   const webDist = opts.webDist ?? path.join(serverRoot, 'web-dist');
   if (fs.existsSync(webDist)) {
@@ -148,11 +154,13 @@ export async function buildApp(opts: BuildOptions): Promise<FastifyInstance> {
     ctx.tracker.start();
     ctx.radar.start();
     ctx.calendar.start();
+    ctx.backup.start();
   }
   app.addHook('onClose', async () => {
     ctx.tracker.stop();
     ctx.radar.stop();
     ctx.calendar.stop();
+    ctx.backup.stop();
     db.close();
   });
 

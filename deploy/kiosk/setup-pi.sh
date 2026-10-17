@@ -3,7 +3,11 @@
 # Bookworm with the desktop (labwc/Wayland or the older X11 session).
 #
 # Usage (on the Pi, as a sudo-capable user):
-#   sudo bash setup-pi.sh "http://<linux-pc-ip>:8080/kiosk/pair?t=hbd_xxxxxxxx"
+#   sudo bash setup-pi.sh --ca homebase-ca.crt "https://<linux-pc-ip>/kiosk/pair?t=hbd_xxxxxxxx"
+#
+# --ca installs the hub's local HTTPS certificate authority (see
+# deploy/README.md §6) so Chromium trusts https://<pc>. Without it, use the
+# plain http://<pc>:3000/kiosk/pair?t=… link instead.
 #
 # Get the pairing link from the hub: Settings → Screens → Add screen.
 # What it does:
@@ -14,10 +18,25 @@
 #   - hardens SSH (key-only) if an authorized_keys file already exists
 set -euo pipefail
 
+CA_FILE=""
+if [[ "${1:-}" == "--ca" ]]; then
+  CA_FILE="${2:-}"
+  shift 2 || true
+fi
 PAIR_URL="${1:-}"
 if [[ ! "$PAIR_URL" =~ ^https?://[A-Za-z0-9._:-]+/kiosk/pair\?t=hbd_[A-Za-z0-9_-]{43}$ ]]; then
-  echo "Usage: sudo bash $0 \"http://<hub>:8080/kiosk/pair?t=hbd_…\"" >&2
+  echo "Usage: sudo bash $0 [--ca homebase-ca.crt] \"https://<hub>/kiosk/pair?t=hbd_…\"" >&2
   exit 1
+fi
+if [[ "$PAIR_URL" == https://* && -z "$CA_FILE" ]]; then
+  echo "An https:// link needs the hub's certificate: add --ca homebase-ca.crt (deploy/README.md §6)." >&2
+  exit 1
+fi
+if [[ -n "$CA_FILE" ]]; then
+  if [[ ! -f "$CA_FILE" ]] || ! openssl x509 -in "$CA_FILE" -noout -subject 2>/dev/null | grep -q "HomeBase Local CA"; then
+    echo "$CA_FILE is not the HomeBase local CA certificate." >&2
+    exit 1
+  fi
 fi
 if [[ $EUID -ne 0 ]]; then echo "Run with sudo." >&2; exit 1; fi
 
@@ -25,7 +44,7 @@ KIOSK_USER=kiosk
 echo "==> Packages"
 apt-get update
 DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-  chromium unattended-upgrades zram-tools fonts-noto-color-emoji
+  chromium unattended-upgrades zram-tools fonts-noto-color-emoji libnss3-tools openssl
 apt-get -y full-upgrade
 
 echo "==> Automatic security updates"
@@ -76,6 +95,22 @@ while true; do
 done
 EOF
 chmod 755 /usr/local/bin/homebase-kiosk
+
+if [[ -n "$CA_FILE" ]]; then
+  echo "==> Trusting the hub's HTTPS certificate"
+  echo "    Fingerprint (compare with the one shown on the PC):"
+  openssl x509 -in "$CA_FILE" -noout -fingerprint -sha256 | sed 's/^/    /'
+  # System store (curl etc.) …
+  install -m 644 "$CA_FILE" /usr/local/share/ca-certificates/homebase-local-ca.crt
+  update-ca-certificates >/dev/null
+  # … and Chromium's own NSS store for the kiosk user.
+  install -d -m 700 -o "$KIOSK_USER" -g "$KIOSK_USER" "$KHOME/.pki/nssdb"
+  if [[ ! -f "$KHOME/.pki/nssdb/cert9.db" ]]; then
+    sudo -u "$KIOSK_USER" certutil -d "sql:$KHOME/.pki/nssdb" -N --empty-password
+  fi
+  sudo -u "$KIOSK_USER" certutil -d "sql:$KHOME/.pki/nssdb" -D -n "HomeBase Local CA" 2>/dev/null || true
+  sudo -u "$KIOSK_USER" certutil -d "sql:$KHOME/.pki/nssdb" -A -t "C,," -n "HomeBase Local CA" -i "$CA_FILE"
+fi
 
 echo "==> Autostart"
 # labwc (Wayland, current Raspberry Pi OS default)

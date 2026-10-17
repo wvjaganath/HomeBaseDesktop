@@ -1,0 +1,54 @@
+# HTTPS front door for HomeBase on the home network (README §6.6).
+#
+# Caddy runs its own small certificate authority ("tls internal"): no domain,
+# no internet exposure, no Let's Encrypt. Trust its root certificate once on
+# each computer/Pi (deploy/README.md §6) and browsers show a normal padlock.
+#
+#   https://<HUB_HOSTS>  →  hub        (all browsers, the Pi included)
+#   http://…:8080        →  308 to https (old bookmarks / screen links)
+#   http://…:3000        →  hub directly, published by the hub service (iPhones)
+{
+	# No admin API: config changes = edit this file + `docker compose restart caddy`.
+	admin off
+	# The container can't (and shouldn't) touch a system trust store.
+	skip_install_trust
+	# Unprivileged ports inside the container; compose maps 443 → 8443.
+	http_port 8080
+	https_port 8443
+	auto_https disable_redirects
+	pki {
+		ca local {
+			name "HomeBase Local CA"
+		}
+	}
+	servers {
+		protocols h1 h2
+	}
+	log {
+		output stdout
+		format console
+		level WARN
+	}
+}
+
+{$HUB_HOSTS} {
+	tls internal
+
+	encode zstd gzip
+
+	reverse_proxy {$HUB_UPSTREAM:hub:3000} {
+		# The hub trusts X-Forwarded-* only from Caddy's fixed address
+		# (TRUST_PROXY in docker-compose.yml). Caddy sets them itself and
+		# replaces anything a client sent.
+		header_up -X-Real-IP
+		# Server-sent events (live updates) and the Mirror websocket.
+		flush_interval -1
+	}
+
+	# The hub sets its own security headers; just hide the server banner.
+	header -Server
+}
+
+http://:8080 {
+	redir https://{host}{uri} 308
+}

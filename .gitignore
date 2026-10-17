@@ -21,3 +21,7 @@ server/assets/logos/
 *.db-shm
 backups/
 deploy/secrets/
+deploy/hub.env
+deploy/mirror.env
+deploy/data/
+deploy/caddy-data/

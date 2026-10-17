@@ -1,0 +1,15 @@
+/* HomeBase Desktop palette for MagicMirror (dark only). */
+:root {
+  --color-text: #c4cdd7;
+  --color-text-dimmed: #8f9baa;
+  --color-text-bright: #e9eef3;
+  --color-background: #0a0d12;
+}
+body {
+  background: #0a0d12;
+}
+.module-header {
+  color: #8f9baa;
+  border-bottom-color: #1d252f;
+  letter-spacing: 2px;
+}

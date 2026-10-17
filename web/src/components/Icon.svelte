@@ -30,7 +30,8 @@
     | 'close'
     | 'repeat'
     | 'rain'
-    | 'shield';
+    | 'shield'
+    | 'alert';
 </script>
 
 <script lang="ts">
@@ -116,5 +117,7 @@
     <path d="M7 15h10a4.5 4.5 0 0 0 0-9 6 6 0 0 0-11.5 2A3.5 3.5 0 0 0 7 15z" /><path d="M9 18l-1 3M13 18l-1 3M17 18l-1 3" />
   {:else if name === 'shield'}
     <path d="M12 3l7.5 3v5.5c0 4.5-3.2 8.2-7.5 9.5-4.3-1.3-7.5-5-7.5-9.5V6z" /><path d="M8.5 12l2.5 2.5 4.5-5" />
+  {:else if name === 'alert'}
+    <path d="M12 3 2 20h20L12 3Z" /><path d="M12 10v4" /><path d="M12 17.5v.01" />
   {/if}
 </svg>

@@ -27,6 +27,29 @@
   let selectedHex = $state<string | null>(null);
   let follow = $state(true);
   let details = $state<Details | null>(null);
+  let rainLayer = $state.raw<L.TileLayer | null>(null);
+  let rainTime = $state<number | null>(null);
+  let rainError = $state(false);
+  let showRain = $state(readRainPref());
+
+  // Desktop extras; the Pi 3 B kiosk skips both to save CPU.
+  const desktop = $derived(!hub.isKiosk);
+
+  function readRainPref(): boolean {
+    try {
+      return localStorage.getItem('homebase.radarRain') === '1';
+    } catch {
+      return false;
+    }
+  }
+  function toggleRain(): void {
+    showRain = !showRain;
+    try {
+      localStorage.setItem('homebase.radarRain', showRain ? '1' : '0');
+    } catch {
+      // Private mode or blocked storage: the toggle still works for this visit.
+    }
+  }
 
   const units = $derived(hub.config?.units ?? 'imperial');
   const overhead = $derived(hub.tracker?.flights ?? []);
@@ -74,7 +97,71 @@
 
   // Redraw planes when data or selection changes.
   $effect(() => {
-    layer?.setData(aircraft, overheadCallsigns, selected?.hex ?? null);
+    const t = hub.radar?.updatedAt ? Date.parse(hub.radar.updatedAt) : Date.now();
+    layer?.setData(aircraft, overheadCallsigns, selected?.hex ?? null, t);
+  });
+
+  // Desktop: glide planes between 5 s polls (~20 fps, paused in background tabs).
+  $effect(() => {
+    const l = layer;
+    if (!l || !desktop) return;
+    l.setExtrapolation(true);
+    let raf = 0;
+    let last = 0;
+    const tick = (t: number): void => {
+      if (t - last > 50) {
+        last = t;
+        l.redraw();
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => {
+      cancelAnimationFrame(raf);
+      l.setExtrapolation(false);
+    };
+  });
+
+  // Desktop: RainViewer precipitation radar (latest frame, refreshed every 10 min).
+  const RAIN_HOST = 'https://tilecache.rainviewer.com';
+  $effect(() => {
+    const m = map;
+    if (!m || !desktop || !showRain) return;
+    let alive = true;
+    let tiles: L.TileLayer | null = null;
+    const load = async (): Promise<void> => {
+      try {
+        const res = await fetch('https://api.rainviewer.com/public/weather-maps.json', { credentials: 'omit', referrerPolicy: 'no-referrer' });
+        if (!res.ok) throw new Error(String(res.status));
+        const j = (await res.json()) as { host?: unknown; radar?: { past?: Array<{ time?: unknown; path?: unknown }> } };
+        const frame = j.radar?.past?.at(-1);
+        // Only ever build tile URLs on the expected host from a well-formed path.
+        if (j.host !== RAIN_HOST || typeof frame?.path !== 'string' || !/^\/v2\/radar\/[\w-]+$/.test(frame.path) || typeof frame.time !== 'number') {
+          throw new Error('unexpected RainViewer response');
+        }
+        if (!alive) return;
+        const url = `${RAIN_HOST}${frame.path}/256/{z}/{x}/{y}/2/1_0.png`;
+        if (tiles) tiles.setUrl(url);
+        else {
+          tiles = L.tileLayer(url, { opacity: 0.6, maxNativeZoom: 7, maxZoom: 14, zIndex: 250, attribution: 'Rain: RainViewer', crossOrigin: false });
+          tiles.addTo(m);
+          rainLayer = tiles;
+        }
+        rainTime = frame.time * 1000;
+        rainError = false;
+      } catch {
+        if (alive) rainError = true;
+      }
+    };
+    void load();
+    const timer = setInterval(() => void load(), 10 * 60_000);
+    return () => {
+      alive = false;
+      clearInterval(timer);
+      tiles?.remove();
+      rainLayer = null;
+      rainTime = null;
+    };
   });
 
   // Follow the highlighted plane (kiosk default), else stay put.
@@ -131,12 +218,20 @@
         <span><i class="sw" style:background={altitudeColor(20000)}></i>15–30k</span>
         <span><i class="sw" style:background={altitudeColor(35000)}></i>30k+</span>
       </div>
+      {#if desktop && showRain}
+        <div class="row small muted">
+          {#if rainError}Rain radar unavailable right now{:else if rainLayer && rainTime}Rain radar · {new Date(rainTime).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}{:else}Loading rain radar…{/if}
+        </div>
+      {/if}
     </div>
 
     <div class="overlay controls">
       <button class="btn sq" aria-label="Zoom in" onclick={() => map?.zoomIn()}><Icon name="plus" /></button>
       <button class="btn sq" aria-label="Zoom out" onclick={() => map?.zoomOut()}><Icon name="minus" /></button>
       <button class="btn sq" aria-label="Recenter on home" onclick={recenter}><Icon name="crosshair" /></button>
+      {#if desktop}
+        <button class="btn sq" class:on={showRain} aria-pressed={showRain} aria-label="Rain radar" title="Rain radar (RainViewer)" onclick={toggleRain}><Icon name="rain" /></button>
+      {/if}
     </div>
     <button class="overlay followbtn btn" class:on={follow} onclick={() => (follow = !follow)}>Follow highlighted plane</button>
   </div>
@@ -263,6 +358,10 @@
     min-height: 52px;
     padding: 0;
     background: rgba(10, 13, 18, 0.9);
+  }
+  .sq.on {
+    color: var(--accent);
+    border-color: var(--accent);
   }
   .followbtn {
     left: 28px;

@@ -10,8 +10,9 @@ const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
  * origin. Bearer-token clients (the iOS app) are unaffected: browsers never
  * attach a Bearer header cross-site.
  */
-export function csrfGuard(secureCookies: boolean) {
-  const names = Object.values(cookieNames(secureCookies));
+export function csrfGuard() {
+  // Check both spellings: either kind of cookie means a browser session.
+  const names = [...Object.values(cookieNames(true)), ...Object.values(cookieNames(false))];
   return async (req: FastifyRequest, reply: FastifyReply): Promise<void> => {
     if (SAFE_METHODS.has(req.method)) return;
     if (req.headers.authorization?.startsWith('Bearer ')) return;

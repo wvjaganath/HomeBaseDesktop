@@ -24,6 +24,8 @@ export class PlaneLayer extends L.Layer {
   private selected: string | null = null;
   private labelCount = 8;
   private hits: Array<{ hex: string; x: number; y: number }> = [];
+  private dataTime = 0;
+  private extrapolate = false;
 
   override onAdd(map: L.Map): this {
     this.canvas = L.DomUtil.create('canvas', 'plane-layer leaflet-zoom-hide');
@@ -40,8 +42,18 @@ export class PlaneLayer extends L.Layer {
     return this;
   }
 
-  setData(data: RadarAircraft[], highlightCallsigns: Set<string>, selectedHex: string | null): void {
+  /**
+   * Desktop only: between polls, move each plane along its track at its
+   * ground speed (dead reckoning from `dataTime`, capped at 15 s so a stalled
+   * feed doesn't send planes wandering). The Pi keeps the cheaper static draw.
+   */
+  setExtrapolation(on: boolean): void {
+    this.extrapolate = on;
+  }
+
+  setData(data: RadarAircraft[], highlightCallsigns: Set<string>, selectedHex: string | null, dataTime = Date.now()): void {
     this.data = data;
+    this.dataTime = dataTime;
     this.highlight = highlightCallsigns;
     this.selected = selectedHex;
     this.redraw();
@@ -61,6 +73,16 @@ export class PlaneLayer extends L.Layer {
     return best;
   }
 
+  private position(a: RadarAircraft, now: number): [number, number] {
+    if (!this.extrapolate || a.altitudeFt === null || !a.groundSpeedKt || a.trackDeg === null) return [a.lat, a.lon];
+    const dt = Math.min(Math.max(now - this.dataTime, 0), 15_000) / 1000;
+    const nm = (a.groundSpeedKt * dt) / 3600;
+    const rad = (a.trackDeg * Math.PI) / 180;
+    const lat = a.lat + (nm / 60) * Math.cos(rad);
+    const lon = a.lon + ((nm / 60) * Math.sin(rad)) / Math.max(Math.cos((a.lat * Math.PI) / 180), 0.01);
+    return [lat, lon];
+  }
+
   redraw(): void {
     const map = this._map as L.Map | undefined;
     const canvas = this.canvas;
@@ -78,7 +100,8 @@ export class PlaneLayer extends L.Layer {
     ctx.clearRect(0, 0, size.x, size.y);
     this.hits = [];
 
-    // Trails first, under the planes.
+    const now = Date.now();
+    // Trails first, under the planes (ending at the drawn position).
     ctx.lineWidth = 2;
     ctx.setLineDash([2, 6]);
     ctx.lineCap = 'round';
@@ -92,6 +115,10 @@ export class PlaneLayer extends L.Layer {
         if (i === 0) ctx.moveTo(p.x, p.y);
         else ctx.lineTo(p.x, p.y);
       });
+      if (this.extrapolate) {
+        const end = map.latLngToContainerPoint(this.position(a, now));
+        ctx.lineTo(end.x, end.y);
+      }
       ctx.stroke();
     }
     ctx.setLineDash([]);
@@ -99,7 +126,7 @@ export class PlaneLayer extends L.Layer {
     ctx.font = '500 13px "IBM Plex Mono", monospace';
     ctx.textBaseline = 'middle';
     this.data.forEach((a, i) => {
-      const p = map.latLngToContainerPoint([a.lat, a.lon]);
+      const p = map.latLngToContainerPoint(this.position(a, now));
       if (p.x < -30 || p.y < -30 || p.x > size.x + 30 || p.y > size.y + 30) return;
       this.hits.push({ hex: a.hex, x: p.x, y: p.y });
       const hot = this.highlight.has(a.callsign);

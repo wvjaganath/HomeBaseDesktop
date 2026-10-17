@@ -141,6 +141,7 @@ export interface HubConfig {
   radarRadiusNm: number;
   trackerEnabled: boolean;
   radarEnabled: boolean;
+  mirrorEnabled: boolean;
   calendarColors: string[];
 }
 
@@ -158,11 +159,11 @@ export type Tab =
   | 'settings';
 
 export interface DeviceSettings {
-  startTab: 'home' | 'flights' | 'radar' | 'calendar';
+  startTab: 'home' | 'flights' | 'radar' | 'calendar' | 'mirror';
   autoFocus: boolean;
   boardTheme: 'led' | 'clean';
   night: { enabled: boolean; start: string; end: string; mode: 'dim' | 'black' };
-  rotate: { enabled: boolean; tabs: Array<'home' | 'flights' | 'radar' | 'calendar'>; seconds: number };
+  rotate: { enabled: boolean; tabs: Array<'home' | 'flights' | 'radar' | 'calendar' | 'mirror'>; seconds: number };
 }
 
 export type Me =

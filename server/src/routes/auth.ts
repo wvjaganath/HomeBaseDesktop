@@ -1,8 +1,8 @@
 import { randomUUID } from 'node:crypto';
-import type { FastifyInstance, FastifyReply } from 'fastify';
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { credentialsSchema, registerSchema, refreshSchema } from '../schemas.js';
-import { cookieNames } from '../security/principal.js';
+import { cookieNames, secureCookies } from '../security/principal.js';
 
 /**
  * Two flavours of the same login:
@@ -12,18 +12,21 @@ import { cookieNames } from '../security/principal.js';
  */
 export default async function authRoutes(app: FastifyInstance): Promise<void> {
   const { auth, env, db } = app.ctx;
-  const names = cookieNames(env.COOKIE_SECURE);
+  const cookieOpts = (req: FastifyRequest) => {
+    const secure = secureCookies(env.COOKIE_SECURE, req);
+    return { names: cookieNames(secure), base: { httpOnly: true, secure, sameSite: 'strict' as const, path: '/' } };
+  };
   // Tight per-IP limit on credential endpoints to slow brute force.
   const authLimit = { config: { rateLimit: { max: 5, timeWindow: '1 minute' } } };
   const refreshLimit = { config: { rateLimit: { max: 30, timeWindow: '1 minute' } } };
 
-  const setSessionCookies = (reply: FastifyReply, accessToken: string, refreshToken: string): void => {
-    const base = { httpOnly: true, secure: env.COOKIE_SECURE, sameSite: 'strict' as const, path: '/' };
+  const setSessionCookies = (req: FastifyRequest, reply: FastifyReply, accessToken: string, refreshToken: string): void => {
+    const { names, base } = cookieOpts(req);
     reply.setCookie(names.access, accessToken, { ...base, maxAge: env.ACCESS_TOKEN_TTL_MIN * 60 });
     reply.setCookie(names.refresh, refreshToken, { ...base, maxAge: env.REFRESH_TOKEN_TTL_DAYS * 86_400 });
   };
-  const clearSessionCookies = (reply: FastifyReply): void => {
-    const base = { httpOnly: true, secure: env.COOKIE_SECURE, sameSite: 'strict' as const, path: '/' };
+  const clearSessionCookies = (req: FastifyRequest, reply: FastifyReply): void => {
+    const { names, base } = cookieOpts(req);
     reply.clearCookie(names.access, base);
     reply.clearCookie(names.refresh, base);
   };
@@ -112,26 +115,26 @@ export default async function authRoutes(app: FastifyInstance): Promise<void> {
       req.log.info({ event: 'login_failed', via: 'web' }, 'failed login');
       return reply.code(401).send({ error: 'invalid_credentials' });
     }
-    setSessionCookies(reply, await auth.signAccessToken(user.id, user.display_name), auth.issueRefreshToken(user.id));
+    setSessionCookies(req, reply, await auth.signAccessToken(user.id, user.display_name), auth.issueRefreshToken(user.id));
     return { user: { id: user.id, email: user.email, displayName: user.display_name } };
   });
 
   app.post('/auth/web/refresh', refreshLimit, async (req, reply) => {
-    const presented = req.cookies[names.refresh];
+    const presented = req.cookies[cookieOpts(req).names.refresh];
     const rotated = presented ? auth.rotateRefreshToken(presented) : null;
     const user = rotated ? auth.findUserById(rotated.userId) : undefined;
     if (!rotated || !user) {
-      clearSessionCookies(reply);
+      clearSessionCookies(req, reply);
       return reply.code(401).send({ error: 'invalid_refresh_token' });
     }
-    setSessionCookies(reply, await auth.signAccessToken(user.id, user.display_name), rotated.token);
+    setSessionCookies(req, reply, await auth.signAccessToken(user.id, user.display_name), rotated.token);
     return { ok: true };
   });
 
   app.post('/auth/web/logout', async (req, reply) => {
-    const presented = req.cookies[names.refresh];
+    const presented = req.cookies[cookieOpts(req).names.refresh];
     if (presented) auth.revokeFamilyByToken(presented);
-    clearSessionCookies(reply);
+    clearSessionCookies(req, reply);
     return { ok: true };
   });
 

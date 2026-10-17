@@ -23,6 +23,7 @@
     fitness: () => import('./screens/Fitness.svelte'),
     nutrition: () => import('./screens/Nutrition.svelte'),
     health: () => import('./screens/Health.svelte'),
+    mirror: () => import('./screens/Mirror.svelte'),
   } as const;
   const EDIT_TABS = new Set(['notes', 'reminders', 'fitness', 'nutrition', 'health', 'settings']);
 

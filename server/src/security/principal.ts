@@ -11,6 +11,11 @@ export type Principal =
   | { kind: 'user'; userId: string; via: 'bearer' | 'cookie' }
   | { kind: 'device'; userId: string; deviceId: string };
 
+/** Whether this request's cookies are Secure (__Host-) ones. */
+export function secureCookies(setting: boolean | 'auto', req: FastifyRequest): boolean {
+  return setting === 'auto' ? req.protocol === 'https' : setting;
+}
+
 export function cookieNames(secure: boolean): { access: string; refresh: string; device: string } {
   // The __Host- prefix (Secure, Path=/, no Domain) is only valid over HTTPS.
   const p = secure ? '__Host-' : '';
@@ -20,10 +25,17 @@ export function cookieNames(secure: boolean): { access: string; refresh: string;
 export async function resolvePrincipal(ctx: AppContext, req: FastifyRequest): Promise<Principal | null> {
   const header = req.headers.authorization;
   if (header?.startsWith('Bearer ')) {
-    const userId = await ctx.auth.verifyAccessToken(header.slice('Bearer '.length).trim());
+    const token = header.slice('Bearer '.length).trim();
+    // Screen tokens can also be sent as a Bearer header (e.g. by the
+    // MagicMirror module's server-side helper). They stay read-only.
+    if (token.startsWith('hbd_')) {
+      const row = ctx.auth.verifyDeviceToken(token);
+      return row ? { kind: 'device', userId: row.user_id, deviceId: row.id } : null;
+    }
+    const userId = await ctx.auth.verifyAccessToken(token);
     return userId ? { kind: 'user', userId, via: 'bearer' } : null;
   }
-  const names = cookieNames(ctx.env.COOKIE_SECURE);
+  const names = cookieNames(secureCookies(ctx.env.COOKIE_SECURE, req));
   const access = req.cookies[names.access];
   if (access) {
     const userId = await ctx.auth.verifyAccessToken(access);

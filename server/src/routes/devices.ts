@@ -1,11 +1,11 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { cookieNames } from '../security/principal.js';
+import { cookieNames, secureCookies } from '../security/principal.js';
 
 const hhmm = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/);
 
 export const deviceSettingsSchema = z.object({
-  startTab: z.enum(['home', 'flights', 'radar', 'calendar']).default('home'),
+  startTab: z.enum(['home', 'flights', 'radar', 'calendar', 'mirror']).default('home'),
   autoFocus: z.boolean().default(true),
   boardTheme: z.enum(['led', 'clean']).default('led'),
   night: z
@@ -19,7 +19,7 @@ export const deviceSettingsSchema = z.object({
   rotate: z
     .object({
       enabled: z.boolean().default(false),
-      tabs: z.array(z.enum(['home', 'flights', 'radar', 'calendar'])).max(4).default(['home', 'radar']),
+      tabs: z.array(z.enum(['home', 'flights', 'radar', 'calendar', 'mirror'])).max(5).default(['home', 'radar']),
       seconds: z.number().int().min(15).max(3600).default(60),
     })
     .default({ enabled: false, tabs: ['home', 'radar'], seconds: 60 }),
@@ -36,7 +36,6 @@ const idParam = z.object({ id: z.guid() });
  */
 export default async function deviceRoutes(app: FastifyInstance): Promise<void> {
   const { db, auth, bus, env } = app.ctx;
-  const names = cookieNames(env.COOKIE_SECURE);
 
   app.get('/api/devices', { preHandler: [app.requireUser] }, async (req) => {
     const rows = db
@@ -121,9 +120,10 @@ export default async function deviceRoutes(app: FastifyInstance): Promise<void> 
       req.log.warn({ event: 'device_pair_failed' }, 'invalid kiosk pairing link');
       return reply.code(401).type('text/plain').send('This screen link is invalid or was revoked. Create a new one in Settings → Screens.');
     }
-    reply.setCookie(names.device, q.data.t, {
+    const secure = secureCookies(env.COOKIE_SECURE, req);
+    reply.setCookie(cookieNames(secure).device, q.data.t, {
       httpOnly: true,
-      secure: env.COOKIE_SECURE,
+      secure,
       sameSite: 'strict',
       path: '/',
       maxAge: 400 * 86_400, // browsers cap cookie lifetime at 400 days

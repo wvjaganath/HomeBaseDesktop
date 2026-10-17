@@ -3,6 +3,7 @@ import { AuthService } from './auth.js';
 import type { DB } from './db.js';
 import type { Env } from './env.js';
 import { EventBus } from './events.js';
+import { BackupService } from './services/backup.js';
 import { SecretBox } from './security/secretBox.js';
 import { CalendarService } from './services/calendar.js';
 import { RadarService } from './services/radar.js';
@@ -20,6 +21,7 @@ export interface AppContext {
   radar: RadarService;
   routes: RouteLookupService;
   calendar: CalendarService;
+  backup: BackupService;
 }
 
 export function createContext(env: Env, db: DB, log: FastifyBaseLogger): AppContext {
@@ -35,5 +37,6 @@ export function createContext(env: Env, db: DB, log: FastifyBaseLogger): AppCont
     radar: new RadarService(env, bus, log.child({ svc: 'radar' })),
     routes: new RouteLookupService(env),
     calendar: new CalendarService(db, secretBox, bus, log.child({ svc: 'calendar' })),
+    backup: new BackupService(db, env, log.child({ svc: 'backup' })),
   };
 }

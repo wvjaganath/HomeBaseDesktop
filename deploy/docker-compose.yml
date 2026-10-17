@@ -1,13 +1,21 @@
-# HomeBase hub on the Linux PC.
+# HomeBase on the Linux PC: hub + HTTPS front door + MagicMirror².
 #
 #   cd deploy
-#   cp hub.env.example hub.env && chmod 600 hub.env   # then fill it in
-#   mkdir -p data && sudo chown -R 10001:10001 data
+#   ./pin-images.sh                                     # base images by digest → .env
+#   cp hub.env.example hub.env && chmod 600 hub.env     # then fill it in
+#   cp mirror.env.example mirror.env && chmod 600 mirror.env
+#   mkdir -p data backups caddy-data && sudo chown -R 10001:10001 data backups caddy-data \
+#     && sudo chmod 700 data backups caddy-data
 #   docker compose build && docker compose up -d
-#   docker compose run --rm logos                      # one-off: fetch airline logos
+#
+# Ports (bind them to the PC's LAN address if it has more than one network):
+#   443   https://<pc>      every browser, the Pi screen included (Caddy)
+#   8080  http://<pc>:8080  redirects to https (old bookmarks and screen links)
+#   3000  http://<pc>:3000  the hub directly, for the HomeBase iPhone app
 #
 # Security posture (README §7.5): non-root, read-only root filesystem, all
-# capabilities dropped, no privilege escalation, resource limits.
+# capabilities dropped, no privilege escalation, resource limits. MagicMirror
+# has no published port: the hub's /mirror/ proxy is its only way in.
 
 x-hardening: &hardening
   read_only: true
@@ -15,9 +23,22 @@ x-hardening: &hardening
   security_opt:
     - no-new-privileges:true
   user: "10001:10001"
+  restart: unless-stopped
   logging:
     driver: json-file
     options: { max-size: "10m", max-file: "3" }
+
+networks:
+  # Caddy ↔ hub. Fixed addresses so the hub can trust exactly one proxy.
+  edge:
+    ipam:
+      config:
+        - subnet: 172.30.87.0/24
+  # hub ↔ MagicMirror. MagicMirror only accepts connections from this subnet.
+  mirror:
+    ipam:
+      config:
+        - subnet: 172.30.88.0/24
 
 services:
   hub:
@@ -28,28 +49,99 @@ services:
       args:
         NODE_IMAGE: ${NODE_IMAGE:-node:26-bookworm-slim}
     image: homebase-hub:local
-    restart: unless-stopped
     env_file: ./hub.env
     environment:
       DATA_DIR: /data
+      BACKUP_DIR: /backups
       NODE_ENV: production
       TZ: ${TZ:-America/Chicago}
+      # Only Caddy (below) may set X-Forwarded-* headers.
+      TRUST_PROXY: 172.30.87.10
+      MIRROR_URL: http://magicmirror:8080
     volumes:
       - ./data:/data
+      - ./backups:/backups
     tmpfs:
       - /tmp:size=64m,mode=1777
+    networks:
+      edge:
+        ipv4_address: 172.30.87.20
+      mirror:
+        ipv4_address: 172.30.88.20
     ports:
-      # 3000 keeps the iPhones' saved address working; 8080 is for screens.
+      # The iPhones' saved address. Browsers should use https:// (Caddy).
       - "3000:3000"
-      - "8080:3000"
     mem_limit: 512m
     cpus: 1.5
     pids_limit: 256
+
+  caddy:
+    <<: *hardening
+    build:
+      context: .
+      dockerfile: caddy.Dockerfile
+      args:
+        CADDY_IMAGE: ${CADDY_IMAGE:-caddy:2-alpine}
+    image: homebase-caddy:local
+    depends_on: [hub]
+    environment:
+      # Every name/address you'll type in a browser, space separated, e.g.
+      # "192.168.1.20 homebase.lan". Set HUB_HOSTS in deploy/.env.
+      HUB_HOSTS: ${HUB_HOSTS:?set HUB_HOSTS in deploy/.env (the PC's LAN IP and/or name)}
+      XDG_DATA_HOME: /data
+      XDG_CONFIG_HOME: /config
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      # Holds the local CA's private key: owner-only, never commit or share.
+      - ./caddy-data:/data
+    tmpfs:
+      - /config:size=8m,mode=0700,uid=10001,gid=10001
+      - /tmp:size=16m,mode=1777
+    networks:
+      edge:
+        ipv4_address: 172.30.87.10
+    ports:
+      - "443:8443"
+      - "8080:8080"
+    mem_limit: 128m
+    cpus: 0.5
+    pids_limit: 64
+
+  magicmirror:
+    <<: *hardening
+    build:
+      context: ..
+      dockerfile: deploy/mirror.Dockerfile
+      args:
+        NODE_IMAGE: ${NODE_IMAGE:-node:26-bookworm-slim}
+    image: homebase-magicmirror:local
+    depends_on: [hub]
+    # HOMEBASE_DEVICE_TOKEN, HOME_LAT/LON, UNITS (see mirror.env.example).
+    env_file: ./mirror.env
+    environment:
+      TZ: ${TZ:-America/Chicago}
+      NODE_ENV: production
+      HOMEBASE_HUB_URL: http://hub:3000
+      MM_ALLOWED_CIDRS: 172.30.88.0/24,127.0.0.1/32
+    volumes:
+      - ../mirror/config/config.js:/opt/magic_mirror/config/config.js:ro
+      - ../mirror/config/basepath.js:/opt/magic_mirror/config/basepath.js:ro
+      - ../mirror/config/custom.css:/opt/magic_mirror/config/custom.css:ro
+    tmpfs:
+      - /tmp:size=32m,mode=1777
+    # Outbound internet only for the weather module (api.open-meteo.com).
+    networks:
+      mirror:
+        ipv4_address: 172.30.88.30
+    mem_limit: 256m
+    cpus: 0.5
+    pids_limit: 128
 
   # One-off helper: clones/updates the airline logo set into ./data/logo-src.
   #   docker compose run --rm logos
   logos:
     <<: *hardening
+    restart: "no"
     image: ${GIT_IMAGE:-alpine/git:latest}
     profiles: ["tools"]
     volumes:
