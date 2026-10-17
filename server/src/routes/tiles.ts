@@ -6,7 +6,7 @@ import { FetchError, safeFetch } from '../security/safeFetch.js';
 
 /**
  * Dark map tiles (CARTO "Dark Matter") for the Radar and record maps, fetched
- * by the hub with the owner's free CARTO key (CARTO_API_KEY in hub.env).
+ * by the hub with the owner's free CARTO key (Settings → Radar & maps).
  *
  * Since late summer 2026 CARTO stamps "API KEY REQUIRED" on tiles requested
  * without a key. Going through the hub keeps the key off every browser and the
@@ -28,7 +28,7 @@ const params = z.object({
 });
 
 export default async function tileRoutes(app: FastifyInstance): Promise<void> {
-  const { env } = app.ctx;
+  const { env, settings } = app.ctx;
   const cacheDir = path.resolve(env.DATA_DIR, 'cache', 'tiles');
   const inflight = new Map<string, Promise<Buffer | null>>();
   let writes = 0;
@@ -50,7 +50,8 @@ export default async function tileRoutes(app: FastifyInstance): Promise<void> {
   async function fetchTile(zoom: number, x: number, y: number, retina: boolean): Promise<Buffer | null> {
     const sub = SUBDOMAINS[(x + y) % SUBDOMAINS.length] ?? 'a';
     const url = new URL(`https://${sub}.basemaps.cartocdn.com/dark_all/${zoom}/${x}/${y}${retina ? '@2x' : ''}.png`);
-    if (env.CARTO_API_KEY) url.searchParams.set('key', env.CARTO_API_KEY);
+    const key = settings.cartoApiKey;
+    if (key) url.searchParams.set('key', key);
     try {
       const res = await safeFetch(url.toString(), { allowHosts: HOSTS, timeoutMs: 8_000, maxBytes: MAX_TILE_BYTES, headers: { accept: 'image/png' } });
       return res.bodyBuffer.subarray(0, 8).equals(PNG_MAGIC) ? res.bodyBuffer : null;
@@ -71,7 +72,7 @@ export default async function tileRoutes(app: FastifyInstance): Promise<void> {
     if (x >= max || y >= max) return reply.code(400).send({ error: 'invalid_input' });
 
     // Cached tiles are kept per key state, so adding a key replaces watermarked ones.
-    const name = `${env.CARTO_API_KEY ? 'k' : 'n'}-${zoom}-${x}-${y}${retina ? '-2x' : ''}.png`;
+    const name = `${settings.cartoApiKey ? 'k' : 'n'}-${zoom}-${x}-${y}${retina ? '-2x' : ''}.png`;
     const cached = path.join(cacheDir, name);
     try {
       const st = await fs.stat(cached);

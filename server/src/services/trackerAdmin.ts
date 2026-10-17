@@ -166,8 +166,11 @@ export class TrackerClient<P extends string> {
 
   constructor(
     private readonly baseUrl: string,
-    private readonly setting = 'TRACKER_URL',
+    /** Shown when the address is missing, e.g. "TRACKER_URL isn’t set". */
+    private readonly missing = 'TRACKER_URL isn’t set',
     private readonly what = 'the plane tracker',
+    /** Addresses typed into Settings: home-network addresses only. */
+    private readonly lanOnly = false,
   ) {
     this.host = baseUrl ? new URL(baseUrl).hostname : '';
   }
@@ -180,12 +183,13 @@ export class TrackerClient<P extends string> {
     path: P,
     opts: { method?: 'GET' | 'POST'; json?: unknown; timeoutMs?: number; maxBytes?: number } = {},
   ): Promise<TrackerReply> {
-    if (!this.configured) throw new TrackerAdminError(`${this.setting} isn’t set in hub.env`, 'not_configured');
+    if (!this.configured) throw new TrackerAdminError(this.missing, 'not_configured');
     try {
       const res = await safeFetch(`${this.baseUrl}${path}`, {
         allowHosts: [this.host],
         allowHttp: true,
         allowPrivate: true, // the tracker lives on the LAN / Docker network by design
+        lanOnly: this.lanOnly,
         timeoutMs: opts.timeoutMs ?? 8_000,
         maxBytes: opts.maxBytes ?? 1024 * 1024,
         method: opts.method ?? 'GET',

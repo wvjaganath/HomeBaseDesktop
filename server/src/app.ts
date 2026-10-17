@@ -16,6 +16,8 @@ import logoRoutes from './routes/logos.js';
 import mirrorRoutes from './routes/mirror.js';
 import statusRoutes from './routes/status.js';
 import peopleRoutes from './routes/people.js';
+import hubSettingsRoutes from './routes/hubSettings.js';
+import mirrorBootstrapRoutes from './routes/mirrorBootstrap.js';
 import tileRoutes from './routes/tiles.js';
 import trackerDataRoutes from './routes/trackerData.js';
 import trackerSettingsRoutes from './routes/trackerSettings.js';
@@ -65,6 +67,16 @@ export async function buildApp(opts: BuildOptions): Promise<FastifyInstance> {
   const db = openDb(env.dbPath);
   const ctx: AppContext = createContext(env, db, app.log);
   app.decorate('ctx', ctx);
+  // Settings saved in the browser apply straight away.
+  if (!env.isTest) app.log.level = ctx.settings.values.logLevel;
+  ctx.settings.onChange((next, prev) => {
+    if (!env.isTest && next.logLevel !== prev.logLevel) app.log.level = next.logLevel;
+    if (next.backupHour !== prev.backupHour || next.backupKeep !== prev.backupKeep) {
+      if (opts.startServices) ctx.backup.start();
+    }
+    ctx.home.notify();
+    ctx.radar.reconfigure();
+  });
   app.decorateRequest('principal', null);
   app.decorateRequest('userId', '');
   app.decorate('requireUser', requireUser(ctx));
@@ -135,6 +147,8 @@ export async function buildApp(opts: BuildOptions): Promise<FastifyInstance> {
   await app.register(trackerSettingsRoutes);
   await app.register(trackerDataRoutes);
   await app.register(tileRoutes);
+  await app.register(hubSettingsRoutes);
+  await app.register(mirrorBootstrapRoutes);
 
   const webDist = opts.webDist ?? path.join(serverRoot, 'web-dist');
   if (fs.existsSync(webDist)) {

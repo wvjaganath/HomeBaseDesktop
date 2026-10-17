@@ -26,6 +26,12 @@ export interface SafeFetchOptions {
   json?: unknown;
   /** Return 4xx/5xx responses (with their body) instead of throwing. */
   allowErrorStatus?: boolean;
+  /**
+   * Only home-network addresses (10/8, 172.16/12, 192.168/16, 100.64/10,
+   * fc00::/7): for addresses people type into Settings, such as the LED board.
+   * Loopback, link-local (cloud metadata) and public addresses are refused.
+   */
+  lanOnly?: boolean;
 }
 
 const PRIVATE_V4: Array<[number, number]> = [
@@ -37,6 +43,25 @@ const PRIVATE_V4: Array<[number, number]> = [
   [0x64400000, 10], // 100.64/10 (CGNAT)
   [0x00000000, 8], // 0/8
 ];
+
+const LAN_V4: Array<[number, number]> = [
+  [0x0a000000, 8],
+  [0xac100000, 12],
+  [0xc0a80000, 16],
+  [0x64400000, 10],
+];
+
+/** A home-network address (not loopback, link-local or public). */
+export function isLanAddress(ip: string): boolean {
+  if (isIP(ip) === 4) {
+    const n = ip.split('.').reduce((acc, part) => (acc << 8) + Number(part), 0) >>> 0;
+    return LAN_V4.some(([base, bits]) => (n & (~0 << (32 - bits))) >>> 0 === base >>> 0);
+  }
+  const v6 = ip.toLowerCase();
+  const mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/.exec(v6);
+  if (mapped?.[1] !== undefined) return isLanAddress(mapped[1]);
+  return isIP(v6) === 6 && (v6.startsWith('fc') || v6.startsWith('fd'));
+}
 
 export function isPrivateAddress(ip: string): boolean {
   if (isIP(ip) === 4) {
@@ -63,7 +88,13 @@ export async function safeFetch(rawUrl: string, opts: SafeFetchOptions): Promise
   if (url.username || url.password) throw new FetchError('credentials in URL not allowed');
   if (!opts.allowHosts.includes(url.hostname)) throw new FetchError(`host not allowed: ${url.hostname}`);
 
-  if (!opts.allowPrivate) {
+  if (opts.lanOnly) {
+    const host = url.hostname.replace(/^\[|\]$/g, '');
+    const addrs = isIP(host) ? [{ address: host }] : await lookup(host, { all: true });
+    if (addrs.length === 0 || !addrs.every((a) => isLanAddress(a.address))) {
+      throw new FetchError(`not a home-network address: ${url.hostname}`);
+    }
+  } else if (!opts.allowPrivate) {
     const addrs = isIP(url.hostname) ? [{ address: url.hostname }] : await lookup(url.hostname, { all: true });
     if (addrs.some((a) => isPrivateAddress(a.address))) {
       throw new FetchError(`host resolves to a private address: ${url.hostname}`);

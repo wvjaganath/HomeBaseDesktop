@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type { DB } from '../db.js';
 import type { Env } from '../env.js';
+import { settingsFromEnv, type SettingsView } from './hubSettings.js';
 
 const NAME_RE = /^homebase-\d{4}-\d{2}-\d{2}T\d{6}\.db$/;
 
@@ -27,14 +28,27 @@ export class BackupService {
   private running: Promise<BackupInfo> | null = null;
   lastError: string | null = null;
 
+  private readonly settings: SettingsView;
+
   constructor(
     private readonly db: DB,
     private readonly env: Env,
     private readonly log: BackupLog,
-  ) {}
+    settings?: SettingsView,
+  ) {
+    this.settings = settings ?? settingsFromEnv(env);
+  }
+
+  get keep(): number {
+    return this.settings().backupKeep;
+  }
+
+  get hour(): number {
+    return this.settings().backupHour;
+  }
 
   get enabled(): boolean {
-    return this.env.BACKUP_KEEP > 0 && this.env.dbPath !== ':memory:';
+    return this.keep > 0 && this.env.dbPath !== ':memory:';
   }
 
   /** Backups currently on disk, newest first. */
@@ -81,7 +95,7 @@ export class BackupService {
       this.log.error({ err }, 'backup failed');
       throw err;
     }
-    for (const old of this.list().slice(this.env.BACKUP_KEEP)) {
+    for (const old of this.list().slice(Math.max(1, this.keep))) {
       fs.rmSync(path.join(dir, old.file), { force: true });
     }
     const info = { file, at: new Date().toISOString(), bytes: fs.statSync(final).size };
@@ -89,13 +103,15 @@ export class BackupService {
     return info;
   }
 
-  /** Schedule the nightly run at BACKUP_HOUR (container local time). */
+  /** Schedule the nightly run at the backup hour (container local time = TZ). */
   start(): void {
+    this.stop();
     if (!this.enabled) return;
     const schedule = (): void => {
+      if (!this.enabled) return;
       const now = new Date();
       const next = new Date(now);
-      next.setHours(this.env.BACKUP_HOUR, 7, 0, 0);
+      next.setHours(this.hour, 7, 0, 0);
       if (next <= now) next.setDate(next.getDate() + 1);
       this.timer = setTimeout(() => {
         this.run()

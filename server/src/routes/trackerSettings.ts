@@ -10,27 +10,38 @@ import { TrackerAdmin, TrackerAdminError, trackerSettingsSchema, wifiConnectSche
  */
 export default async function trackerSettingsRoutes(app: FastifyInstance): Promise<void> {
   const { env } = app.ctx;
-  // `?target=board` edits the LED board Pi (LED_BOARD_URL) instead of the
+  // `?target=board` edits the LED board Pi (its address is in Settings) instead of the
   // tracker this hub uses (TRACKER_URL, the bundled one in docker compose).
-  const admins = {
-    tracker: new TrackerAdmin(env.TRACKER_URL, 'TRACKER_URL', 'the plane tracker'),
-    board: new TrackerAdmin(env.LED_BOARD_URL, 'LED_BOARD_URL', 'the LED board'),
+  const trackerAdmin = new TrackerAdmin(env.TRACKER_URL, 'TRACKER_URL isn’t set', 'the plane tracker');
+  // The board's address is a setting (Settings → Plane tracker → LED board), so
+  // it's read each time, and only home-network addresses are ever contacted.
+  let board = { url: '', admin: new TrackerAdmin('', '', 'the LED board', true) };
+  const boardAdmin = (): TrackerAdmin => {
+    const url = app.ctx.settings.values.ledBoardUrl;
+    if (url !== board.url) board = { url, admin: new TrackerAdmin(url, 'Add the LED board’s address first (Settings → Plane tracker → LED board)', 'the LED board', true) };
+    return board.admin;
   };
   const targetQuery = z.object({ target: z.enum(['tracker', 'board']).default('tracker') });
   const pick = (req: FastifyRequest): TrackerAdmin | null => {
     const q = targetQuery.safeParse(req.query);
-    return q.success ? admins[q.data.target] : null;
+    if (!q.success) return null;
+    return q.data.target === 'board' ? boardAdmin() : trackerAdmin;
   };
   // What the screen needs to know to show the right sections.
-  const where = { bundled: env.TRACKER_BUNDLED, board: env.LED_BOARD_URL !== '' };
+  const where = (): { bundled: boolean; board: boolean; boardUrl: string; feedPort: number } => ({
+    bundled: env.TRACKER_BUNDLED,
+    board: app.ctx.settings.values.ledBoardUrl !== '',
+    boardUrl: app.ctx.settings.values.ledBoardUrl,
+    feedPort: env.TRACKER_FEED_PORT,
+  });
   const badTarget = (reply: FastifyReply): FastifyReply => reply.code(400).send({ error: 'invalid_input', message: 'target must be tracker or board' });
   const user = { preHandler: [app.requireUser] };
   const limit = (max: number, timeWindow: string) => ({ preHandler: [app.requireUser], config: { rateLimit: { max, timeWindow } } });
 
-  const fail = (reply: FastifyReply, err: unknown): FastifyReply => {
+  const fail = (reply: FastifyReply, err: unknown, extra: object = {}): FastifyReply => {
     if (err instanceof TrackerAdminError) {
       const status = err.code === 'not_configured' ? 409 : err.code === 'rejected' ? 422 : 502;
-      return reply.code(status).send({ error: `tracker_${err.code}`, message: err.message });
+      return reply.code(status).send({ error: `tracker_${err.code}`, message: err.message, ...extra });
     }
     throw err;
   };
@@ -39,10 +50,10 @@ export default async function trackerSettingsRoutes(app: FastifyInstance): Promi
     const admin = pick(req);
     if (!admin) return badTarget(reply);
     try {
-      return { configured: true, ...where, ...(await admin.getSettings()) };
+      return { configured: true, ...where(), ...(await admin.getSettings()) };
     } catch (err) {
-      if (err instanceof TrackerAdminError && err.code === 'not_configured') return { configured: false, ...where };
-      return fail(reply, err);
+      if (err instanceof TrackerAdminError && err.code === 'not_configured') return { configured: false, ...where() };
+      return fail(reply, err, where());
     }
   });
 
@@ -57,9 +68,9 @@ export default async function trackerSettingsRoutes(app: FastifyInstance): Promi
     }
     try {
       await admin.saveSettings(parsed.data);
-      req.log.info({ event: 'tracker_settings_saved', by: req.userId, target: admin === admins.board ? 'board' : 'tracker' }, 'plane tracker settings saved');
-      // The radar and maps use the tracker's home when hub.env has none.
-      if (admin === admins.tracker) void app.ctx.home.refresh();
+      req.log.info({ event: 'tracker_settings_saved', by: req.userId, target: admin === trackerAdmin ? 'tracker' : 'board' }, 'plane tracker settings saved');
+      // The radar, maps and MagicMirror use the tracker's home and units.
+      if (admin === trackerAdmin) void app.ctx.home.refresh();
       return { ok: true };
     } catch (err) {
       return fail(reply, err);

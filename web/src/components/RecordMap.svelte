@@ -101,7 +101,7 @@
     if (!el) return;
     map = L.map(el, { zoomControl: true, attributionControl: true, preferCanvas: true, worldCopyJump: true }).setView([home.lat, home.lon], 9);
     map.attributionControl.setPrefix(false);
-    // Tiles come through the hub, which adds the CARTO key (CARTO_API_KEY).
+    // Tiles come through the hub, which adds the CARTO key (Settings → Hub).
     L.tileLayer('/api/tiles/{z}/{x}/{y}{r}.png', {
       maxZoom: 14,
       minZoom: 1,

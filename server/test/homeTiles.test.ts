@@ -6,6 +6,7 @@ import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { loadEnv } from '../src/env.js';
 import { HomeLocation } from '../src/services/home.js';
+import { settingsFromEnv } from '../src/services/hubSettings.js';
 import { registerUser, testApp } from './helpers.js';
 
 /** A tracker whose saved settings have a home location. */
@@ -26,17 +27,21 @@ afterAll(() => {
 const env = (o: Record<string, string>) => loadEnv({ JWT_SECRET: 'x'.repeat(40), ...o });
 
 describe('home location', () => {
-  it('uses HOME_LAT/HOME_LON when set, and never asks the tracker', async () => {
-    const h = new HomeLocation(env({ HOME_LAT: '40.1', HOME_LON: '-88.2', TRACKER_URL: trackerUrl }));
+  it('uses Settings when there is no plane tracker', async () => {
+    const e = env({ HOME_LAT: '40.1', HOME_LON: '-88.2', UNITS: 'metric' });
+    const h = new HomeLocation(e, undefined, settingsFromEnv(e));
     await h.refresh();
     expect(h.get()).toEqual({ lat: 40.1, lon: -88.2 });
-    expect(h.source).toBe('hub.env');
+    expect(h.units).toBe('metric');
+    expect(h.source).toBe('settings');
+    expect(h.trackerLeads).toBe(false);
   });
 
-  it('falls back to the plane tracker’s saved home, and ignores 0, 0 or junk', async () => {
+  it('follows the plane tracker’s Location settings (one place to set them), ignoring 0, 0 or junk', async () => {
     home = [41.8827, -87.6232];
-    const h = new HomeLocation(env({ HOME_LAT: '', HOME_LON: '', TRACKER_URL: trackerUrl }));
-    expect(h.get()).toBeNull();
+    const e = env({ HOME_LAT: '40.1', HOME_LON: '-88.2', TRACKER_URL: trackerUrl });
+    const h = new HomeLocation(e, undefined, settingsFromEnv(e));
+    expect(h.get()).toEqual({ lat: 40.1, lon: -88.2 }); // until the tracker answers
     let changes = 0;
     h.onChange(() => changes++);
     await h.refresh();
@@ -100,5 +105,14 @@ describe('map tiles through the hub', () => {
 
   it('rejects a malformed CARTO_API_KEY at startup', () => {
     expect(() => env({ CARTO_API_KEY: 'has spaces in it' })).toThrow();
+  });
+});
+
+describe('home-network-only fetches (addresses typed into Settings)', () => {
+  it('knows home-network addresses from everything else', async () => {
+    const { isLanAddress, safeFetch } = await import('../src/security/safeFetch.js');
+    for (const ip of ['10.0.0.5', '172.16.0.1', '172.31.255.1', '192.168.1.60', '100.64.0.1', 'fd00::1', '::ffff:192.168.1.2']) expect(isLanAddress(ip), ip).toBe(true);
+    for (const ip of ['127.0.0.1', '169.254.169.254', '0.0.0.0', '8.8.8.8', '172.32.0.1', '::1', 'fe80::1', '2001:4860::8888']) expect(isLanAddress(ip), ip).toBe(false);
+    await expect(safeFetch('http://127.0.0.1:9/x', { allowHosts: ['127.0.0.1'], allowHttp: true, allowPrivate: true, lanOnly: true })).rejects.toThrow(/home-network/);
   });
 });

@@ -5,6 +5,7 @@ import type { EventBus } from '../events.js';
 import { bearingDeg, cardinal, haversineMiles, milesTo } from '../lib/geo.js';
 import { safeFetchJson } from '../security/safeFetch.js';
 import { HomeLocation } from './home.js';
+import { settingsFromEnv, type SettingsView } from './hubSettings.js';
 
 /**
  * Live aircraft around home from the free community ADS-B feeds.
@@ -86,23 +87,45 @@ export class RadarService {
   private trails = new Map<string, Array<{ lat: number; lon: number; t: number }>>();
   private inFlight = false;
 
+  private readonly settings: SettingsView;
+  private readonly homeLoc: HomeLocation;
+
   constructor(
-    private readonly env: Env,
+    env: Env,
     private readonly bus: EventBus,
     private readonly log: FastifyBaseLogger,
-    private readonly homeLoc: HomeLocation = new HomeLocation(env),
+    homeLoc?: HomeLocation,
+    settings?: SettingsView,
   ) {
-    const home = homeLoc.get();
-    this.snapshotData = {
-      enabled: env.RADAR_ENABLED && home !== null,
-      off: !env.RADAR_ENABLED ? 'disabled' : home ? null : 'no_home',
-      source: null,
-      updatedAt: null,
+    this.settings = settings ?? settingsFromEnv(env);
+    this.homeLoc = homeLoc ?? new HomeLocation(env, undefined, this.settings);
+    this.snapshotData = { ...this.state(), source: null, updatedAt: null, aircraft: [] };
+  }
+
+  /** Enabled / home / range / units as the settings say right now. */
+  private state(): Pick<RadarSnapshot, 'enabled' | 'off' | 'home' | 'radiusNm' | 'units'> {
+    const s = this.settings();
+    const home = this.homeLoc.get();
+    return {
+      enabled: s.radarEnabled && home !== null,
+      off: !s.radarEnabled ? 'disabled' : home ? null : 'no_home',
       home: home ?? { lat: 0, lon: 0 },
-      radiusNm: env.RADAR_RADIUS_NM,
-      units: env.UNITS,
-      aircraft: [],
+      radiusNm: s.radarRadiusNm,
+      units: this.homeLoc.units,
     };
+  }
+
+  /** Settings or home changed: take them on, and drop data from the old area. */
+  reconfigure(): void {
+    const next = this.state();
+    const prev = this.snapshotData;
+    const moved = next.home.lat !== prev.home.lat || next.home.lon !== prev.home.lon || next.radiusNm !== prev.radiusNm || next.units !== prev.units;
+    if (!moved && next.enabled === prev.enabled) return;
+    if (moved) this.trails.clear();
+    this.snapshotData = { ...prev, ...next, ...(moved || !next.enabled ? { aircraft: [], updatedAt: null, source: null } : {}) };
+    if (!next.enabled) this.stop();
+    this.version += 1;
+    this.bus.emit('radar', { version: this.version });
   }
 
   get snapshot(): { version: number; data: RadarSnapshot } {
@@ -117,16 +140,9 @@ export class RadarService {
 
   start(): void {
     // Home can arrive later, from the plane tracker's settings.
-    this.homeLoc.onChange(() => {
-      const home = this.homeLoc.get();
-      if (!home) return;
-      this.trails.clear();
-      this.snapshotData = { ...this.snapshotData, enabled: this.env.RADAR_ENABLED, off: this.env.RADAR_ENABLED ? null : 'disabled', home, aircraft: [] };
-      this.version += 1;
-      this.bus.emit('radar', { version: this.version });
-    });
-    if (!this.env.RADAR_ENABLED) this.log.info('radar: off (RADAR_ENABLED=false)');
-    else if (!this.snapshotData.enabled) this.log.info('radar: waiting for a home location (HOME_LAT/HOME_LON, or the plane tracker settings)');
+    this.homeLoc.onChange(() => this.reconfigure());
+    if (!this.settings().radarEnabled) this.log.info('radar: turned off in Settings');
+    else if (!this.snapshotData.enabled) this.log.info('radar: waiting for a home location (Settings → Plane tracker → Location)');
   }
 
   stop(): void {
@@ -153,19 +169,20 @@ export class RadarService {
   }
 
   private userAgent(): string {
-    const contact = this.env.ADSB_CONTACT ? ` (+${this.env.ADSB_CONTACT})` : '';
+    const c = this.settings().adsbContact;
+    const contact = c ? ` (+${c})` : '';
     return `HomeBaseHub/2.0 personal home display${contact}`;
   }
 
   private async poll(): Promise<void> {
     const home = this.homeLoc.get();
-    if (!home) return;
+    if (!home || !this.snapshotData.enabled) return;
     const lat = Number(home.lat.toFixed(4));
     const lon = Number(home.lon.toFixed(4));
     let lastErr: unknown = null;
     for (const p of PROVIDERS) {
       try {
-        const raw = await safeFetchJson(p.url(lat, lon, this.env.RADAR_RADIUS_NM), {
+        const raw = await safeFetchJson(p.url(lat, lon, this.snapshotData.radiusNm), {
           allowHosts: [p.host],
           timeoutMs: 6_000,
           maxBytes: 4 * 1024 * 1024,
@@ -218,7 +235,7 @@ export class RadarService {
         trackDeg: a.track ?? a.true_heading ?? null,
         verticalFpm: a.baro_rate ?? a.geom_rate ?? null,
         squawk: a.squawk ?? '',
-        distance: Math.round(milesTo(this.env.UNITS, miles) * 10) / 10,
+        distance: Math.round(milesTo(this.snapshotData.units, miles) * 10) / 10,
         direction: cardinal(bearingDeg(home.lat, home.lon, lat, lon)),
         trail: trail.map((pt) => [Number(pt.lat.toFixed(5)), Number(pt.lon.toFixed(5))] as [number, number]),
       });

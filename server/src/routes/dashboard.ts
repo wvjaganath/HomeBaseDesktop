@@ -8,19 +8,19 @@ const ymd = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 
 /** Read-only data for the screens (people and kiosk devices) + calendar settings. */
 export default async function dashboardRoutes(app: FastifyInstance): Promise<void> {
-  const { env, db, tracker, radar, routes, calendar, home } = app.ctx;
+  const { env, db, tracker, radar, routes, calendar, home, settings } = app.ctx;
 
   app.get('/api/config', { preHandler: [app.requireViewer] }, async () => ({
-    units: env.UNITS,
-    timezone: env.TIMEZONE,
+    units: home.units,
+    timezone: env.timezone,
     home: home.get() ?? { lat: 0, lon: 0 },
     homeSource: home.source,
-    radarRadiusNm: env.RADAR_RADIUS_NM,
+    radarRadiusNm: settings.values.radarRadiusNm,
     trackerEnabled: env.TRACKER_URL !== '',
     trackerBundled: env.TRACKER_BUNDLED,
     radarEnabled: radar.snapshot.data.enabled,
     radarOff: radar.snapshot.data.off,
-    mapKey: env.CARTO_API_KEY !== '',
+    mapKey: settings.cartoApiKey !== '',
     mirrorEnabled: env.MIRROR_URL !== '',
     calendarColors: CALENDAR_COLORS,
   }));

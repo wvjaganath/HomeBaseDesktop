@@ -60,7 +60,7 @@
   );
   const trackerFlight = $derived(selected ? overhead.find((f) => f.callsign === selected.callsign) : undefined);
 
-  // Home can come from hub.env or, later, from the plane tracker's settings.
+  // Home comes from the plane tracker's Location settings (or Settings → Hub), possibly later.
   const known = (h: { lat: number; lon: number } | undefined | null): h is { lat: number; lon: number } => !!h && !(h.lat === 0 && h.lon === 0);
   const home = $derived(known(hub.radar?.home) ? hub.radar.home : known(hub.config?.home) ? hub.config.home : null);
   const offReason = $derived(hub.radar?.off ?? hub.config?.radarOff ?? null);
@@ -72,7 +72,7 @@
     const start = home ?? { lat: 0, lon: 0 };
     map = L.map(mapEl, { zoomControl: false, attributionControl: true, preferCanvas: true }).setView([start.lat, start.lon], home ? 10 : 6);
     map.attributionControl.setPrefix(false);
-    // Tiles come through the hub, which adds the CARTO key (CARTO_API_KEY).
+    // Tiles come through the hub, which adds the CARTO key (Settings → Hub).
     L.tileLayer('/api/tiles/{z}/{x}/{y}{r}.png', {
       maxZoom: 14,
       minZoom: 6,
@@ -260,7 +260,7 @@
 
   <aside class="panel">
     {#if !mapKey && !hub.isKiosk}
-      <p class="keynote" role="note">The map background needs a free CARTO key (it says “API KEY REQUIRED” without one). Get one at <a href="https://carto.com/basemaps/apikey/" target="_blank" rel="noopener noreferrer">carto.com/basemaps/apikey</a>, put it in hub.env as <code>CARTO_API_KEY=</code>, then <code>docker compose up -d hub</code>.</p>
+      <p class="keynote" role="note">The map background needs a free CARTO key (it says “API KEY REQUIRED” without one). Get one at <a href="https://carto.com/basemaps/apikey/" target="_blank" rel="noopener noreferrer">carto.com/basemaps/apikey</a> and paste it in <a href="#/settings">Settings → Hub → Radar &amp; maps</a>.</p>
     {/if}
     {#if selected}
       <div class="who">
@@ -298,9 +298,9 @@
       <AircraftPhoto hex={selected.hex} width={440} />
     {:else}
       {#if offReason === 'disabled'}
-        <p class="muted">Radar is turned off (<code>RADAR_ENABLED=false</code> in hub.env).</p>
+        <p class="muted">Radar is turned off. Turn it on in <a href="#/settings">Settings → Hub → Radar &amp; maps</a>.</p>
       {:else if offReason === 'no_home' || !home}
-        <p class="muted">Radar is waiting for your home location. Set it in <a href="#/tracker-settings">Settings → Plane tracker</a> (Home lat, lon), or as <code>HOME_LAT</code> / <code>HOME_LON</code> in hub.env.</p>
+        <p class="muted">Radar is waiting for your home location. Set it in <a href="#/tracker-settings">Settings → Plane tracker → Location</a> (Home lat, lon).</p>
       {:else}
         <p class="muted">Waiting for aircraft data…</p>
       {/if}

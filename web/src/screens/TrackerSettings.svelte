@@ -72,7 +72,7 @@
   let confirmRestart = $state(false);
 
   // Which tracker: the one this hub uses (bundled on this server in docker
-  // compose) or the LED board Pi (LED_BOARD_URL), which follows it.
+  // compose) or the LED board Pi (address in Settings → Hub), which follows it.
   let target = $state<'tracker' | 'board'>(location.hash.includes('board') ? 'board' : 'tracker');
   let bundled = $state(false);
   let hasBoard = $state(false);
@@ -448,7 +448,7 @@
     <section class="card section">
       {#if target === 'board'}
         <h2>The hub doesn’t know where the LED board is</h2>
-        <p class="muted">Set <code>LED_BOARD_URL</code> in <code>deploy/hub.env</code> to the board Pi’s tracker address (for example <code>http://192.168.1.60:8080</code>), then run <code>docker compose up -d hub</code>.</p>
+        <p class="muted">Add the board Pi’s address (for example <code>http://192.168.1.60:8080</code>) in <a href="#/settings">Settings → Hub → LED board</a>.</p>
       {:else}
         <h2>The hub doesn’t know where the tracker is</h2>
         <p class="muted">With docker compose the tracker runs on this server and is set up for you (<code>docker compose up -d tracker hub</code>). Otherwise set <code>TRACKER_URL</code> in <code>deploy/hub.env</code> to the tracker’s address (for example <code>http://192.168.1.60:8080</code>), then run <code>docker compose up -d hub</code>.</p>
@@ -459,7 +459,7 @@
       <h2>Couldn’t reach {what}</h2>
       <p class="muted">{loadError}</p>
       {#if target === 'board'}
-        <p class="muted">Check that the LED board Pi is on and its address in <code>LED_BOARD_URL</code> is right.</p>
+        <p class="muted">Check that the LED board Pi is on and its address in <a href="#/settings">Settings → Hub → LED board</a> is right.</p>
       {:else if bundled}
         <p class="muted">It may still be starting. On the server: <code>docker compose ps tracker</code> and <code>docker compose logs tracker</code>.</p>
       {:else}
@@ -755,7 +755,7 @@
       <div class="row"><button class="btn" disabled={wBusy} onclick={() => void connect()}>Connect the tracker</button></div>
       {#if wWarn}
         <div class="warnbox" role="alert">
-          <p><strong>This moves the tracker to a different network.</strong> If the new network gives it a different address, HomeBase loses it until you update <code>{target === 'board' ? 'LED_BOARD_URL' : 'TRACKER_URL'}</code> in hub.env.</p>
+          <p><strong>This moves the tracker to a different network.</strong> If the new network gives it a different address, HomeBase loses it until you update {#if target === 'board'}its address in Settings → Hub → LED board{:else}<code>TRACKER_URL</code>{/if}.</p>
           <div class="row"><button class="btn primary" onclick={() => void connect(true)}>Connect anyway</button><button class="btn" onclick={() => (wWarn = false)}>Cancel</button></div>
         </div>
       {/if}

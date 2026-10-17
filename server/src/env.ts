@@ -39,7 +39,8 @@ const envSchema = z.object({
     .string()
     .default('')
     .refine((v) => v === '' || /^[0-9a-fA-F]{64}$/.test(v), 'SECRETS_KEY must be 64 hex characters (openssl rand -hex 32) or empty'),
-  ALLOW_REGISTRATION: bool.default(true),
+  // Only the first account by default; later ones are added in Settings → People.
+  ALLOW_REGISTRATION: bool.default(false),
   ACCESS_TOKEN_TTL_MIN: z.coerce.number().int().min(1).max(60).default(15),
   REFRESH_TOKEN_TTL_DAYS: z.coerce.number().int().min(1).max(90).default(30),
   // auto: Secure (__Host-) cookies whenever the request arrived over HTTPS
@@ -68,6 +69,8 @@ const envSchema = z.object({
   // true when the tracker runs on this server (docker-compose's `tracker`
   // service). The screens then hide the LED-only settings (Wi-Fi, panel).
   TRACKER_BUNDLED: bool.default(false),
+  // The port Caddy serves the LED board feed on (TRACKER_FEED_PORT in deploy/.env).
+  TRACKER_FEED_PORT: z.coerce.number().int().min(1).max(65535).default(8081),
   // Optional: the LED board Pi's own tracker web UI, so its display settings
   // (brightness, panel, Wi-Fi, which server it follows) can be edited here too.
   LED_BOARD_URL: baseUrl('LED_BOARD_URL', 'http://plane-clock.local:8080'),
@@ -78,6 +81,13 @@ const envSchema = z.object({
     .default('')
     .refine((v) => v === '' || /^http:\/\/[^/\s]+\/?$/.test(v), { message: 'MIRROR_URL must look like http://magicmirror:8080' })
     .transform((v) => v.replace(/\/$/, '')),
+
+  // The MagicMirror container's fixed address (docker-compose). Only it may ask
+  // the hub for its start-up settings (/internal/mirror/*). Empty = off.
+  MIRROR_CLIENT_IP: z
+    .string()
+    .default('')
+    .refine((v) => v === '' || net.isIP(v) !== 0, 'MIRROR_CLIENT_IP must be an IP address'),
 
   RADAR_ENABLED: bool.default(true),
   // Free key for CARTO's dark map tiles (https://carto.com/basemaps/apikey/).
@@ -99,6 +109,20 @@ export type Env = z.infer<typeof envSchema> & {
   dbPath: string;
   backupDir: string;
   isTest: boolean;
+  /** The hub's time zone: TZ (deploy/.env, shared by every container). */
+  timezone: string;
+  /** Names (never values) of the variables that were set and non-empty. */
+  setKeys: string[];
+};
+
+const validZone = (z?: string): string | null => {
+  if (!z) return null;
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: z });
+    return z;
+  } catch {
+    return null;
+  }
 };
 
 export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
@@ -113,5 +137,7 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
     dbPath: data.DB_PATH ?? path.join(data.DATA_DIR, 'homebase.db'),
     backupDir: data.BACKUP_DIR ?? path.join(data.DATA_DIR, 'backups'),
     isTest: data.NODE_ENV === 'test',
+    timezone: validZone(source.TZ) ?? validZone(data.TIMEZONE) ?? 'UTC',
+    setKeys: Object.keys(source).filter((k) => /^[A-Z][A-Z0-9_]*$/.test(k) && (source[k] ?? '').trim() !== ''),
   };
 }

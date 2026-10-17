@@ -2,6 +2,7 @@
   import Icon from '../components/Icon.svelte';
   import StatusPanel from '../components/StatusPanel.svelte';
   import PeoplePanel from '../components/PeoplePanel.svelte';
+  import HubSettingsPanel from '../components/HubSettingsPanel.svelte';
   import ChangePassword from '../components/ChangePassword.svelte';
   import { ApiError, api } from '../lib/api';
   import { hub } from '../lib/hub.svelte';
@@ -145,7 +146,7 @@
   <section class="card">
     <h2><Icon name="plane" /> Plane tracker</h2>
     {#if hub.config?.trackerBundled}
-      <p class="muted">The tracker runs on this server: location and zone, flights, alerts, API keys and order. The LED board’s own settings (brightness, panel, Wi-Fi) are there too when <code>LED_BOARD_URL</code> is set.</p>
+      <p class="muted">The tracker runs on this server: location and zone, flights, alerts, API keys and order. The LED board’s own settings (brightness, panel, Wi-Fi) are there too once its address is saved under Hub → LED board.</p>
     {:else}
       <p class="muted">Location and zone, display and night dimming, flights, API keys and order, master/slave and Wi-Fi for the LED tracker Pi: the same settings as its own page, saved on the tracker.</p>
     {/if}
@@ -246,6 +247,8 @@
   </section>
 
   <StatusPanel />
+
+  <HubSettingsPanel />
 
   <PeoplePanel />
 

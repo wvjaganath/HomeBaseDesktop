@@ -10,6 +10,8 @@ export async function testApp(overrides: Record<string, string> = {}): Promise<F
     DATA_DIR: '/tmp/homebase-test-data',
     TRACKER_URL: '',
     RADAR_ENABLED: 'false',
+    // Tests register several people through the open sign-up.
+    ALLOW_REGISTRATION: 'true',
     ...overrides,
   });
   const app = await buildApp({ env, startServices: false, webDist: '/nonexistent' });

@@ -1,12 +1,14 @@
 import type { FastifyBaseLogger } from 'fastify';
 import type { Env } from '../env.js';
+import { settingsFromEnv, type SettingsView } from './hubSettings.js';
 import { TrackerAdmin } from './trackerAdmin.js';
 
 export interface Home {
   lat: number;
   lon: number;
 }
-export type HomeSource = 'hub.env' | 'tracker' | null;
+export type HomeSource = 'tracker' | 'settings' | null;
+export type Units = 'imperial' | 'metric';
 
 const REFRESH_MS = 5 * 60_000;
 const RETRY_MS = 30_000; // until the tracker has answered once (it may still be starting)
@@ -14,69 +16,92 @@ const valid = (lat: unknown, lon: unknown): lat is number =>
   typeof lat === 'number' && typeof lon === 'number' && Number.isFinite(lat) && Number.isFinite(lon) && Math.abs(lat) <= 90 && Math.abs(lon) <= 180 && !(lat === 0 && lon === 0);
 
 /**
- * Where home is, for the radar and the maps.
+ * Where home is and which units to use, for the radar, maps and screens.
  *
- * HOME_LAT / HOME_LON in hub.env win. Without them, the hub uses the home
- * location saved in the plane tracker's settings (Settings → Plane tracker →
- * Location), so it only has to be entered once.
+ * One place to set them: the plane tracker's settings (Settings → Plane
+ * tracker → Location), which the tracker needs anyway. Without a tracker, the
+ * hub's own Settings → General values are used.
  */
 export class HomeLocation {
-  private value: Home | null;
-  private from: HomeSource;
+  private fromTracker: { home: Home | null; units: Units | null } = { home: null, units: null };
   private timer: NodeJS.Timeout | null = null;
   private stopped = false;
   private readonly listeners = new Set<() => void>();
+  private readonly settings: SettingsView;
+  private last = '';
 
   constructor(
     env: Env,
     private readonly log?: FastifyBaseLogger,
+    settings?: SettingsView,
     private readonly admin: TrackerAdmin = new TrackerAdmin(env.TRACKER_URL),
   ) {
-    const fromEnv = valid(env.HOME_LAT, env.HOME_LON);
-    this.value = fromEnv ? { lat: env.HOME_LAT, lon: env.HOME_LON } : null;
-    this.from = fromEnv ? 'hub.env' : null;
+    this.settings = settings ?? settingsFromEnv(env);
+    this.last = this.key();
+  }
+
+  /** True when a plane tracker is set up, so its Location settings lead. */
+  get trackerLeads(): boolean {
+    return this.admin.configured;
   }
 
   get(): Home | null {
-    return this.value;
+    return this.fromTracker.home ?? this.settings().home;
+  }
+
+  get units(): Units {
+    return this.fromTracker.units ?? this.settings().units;
   }
 
   get source(): HomeSource {
-    return this.from;
+    if (this.fromTracker.home) return 'tracker';
+    return this.settings().home ? 'settings' : null;
   }
 
-  /** Called when home becomes known or changes. */
+  private key(): string {
+    const h = this.get();
+    return `${h ? `${h.lat},${h.lon}` : '-'}|${this.units}`;
+  }
+
+  /** Called when home or units change. */
   onChange(fn: () => void): () => void {
     this.listeners.add(fn);
     return () => this.listeners.delete(fn);
   }
 
-  /** Re-read the tracker's home location (no-op when hub.env sets it). */
+  /** Tell listeners if the effective values moved (after a refresh or a settings save). */
+  notify(): void {
+    const k = this.key();
+    if (k === this.last) return;
+    this.last = k;
+    for (const fn of this.listeners) fn();
+  }
+
+  /** Re-read the tracker's Location settings. */
   async refresh(): Promise<void> {
-    if (this.from === 'hub.env' || !this.admin.configured) return;
+    if (!this.admin.configured) return;
     try {
       const { config } = await this.admin.getSettings();
-      const loc = config.location;
-      const pair = typeof loc === 'object' && loc !== null ? (loc as Record<string, unknown>).location_home : null;
-      const [lat, lon] = Array.isArray(pair) ? (pair as unknown[]) : [];
-      if (!valid(lat, lon) || typeof lon !== 'number') return;
-      const next = { lat: Number(lat.toFixed(6)), lon: Number(lon.toFixed(6)) };
-      if (this.value?.lat === next.lat && this.value.lon === next.lon) return;
-      this.value = next;
-      this.from = 'tracker';
-      this.log?.info('home location taken from the plane tracker settings');
-      for (const fn of this.listeners) fn();
+      const loc = typeof config.location === 'object' && config.location !== null ? (config.location as Record<string, unknown>) : {};
+      const [lat, lon] = Array.isArray(loc.location_home) ? (loc.location_home as unknown[]) : [];
+      const home = valid(lat, lon) && typeof lon === 'number' ? { lat: Number(lat.toFixed(6)), lon: Number(lon.toFixed(6)) } : null;
+      // The tracker also has "nautical"; the screens show miles for that.
+      const units: Units | null = loc.distance_units === 'metric' ? 'metric' : loc.distance_units === 'imperial' || loc.distance_units === 'nautical' ? 'imperial' : null;
+      const wasEmpty = !this.fromTracker.home;
+      this.fromTracker = { home, units };
+      if (home && wasEmpty) this.log?.info('home location taken from the plane tracker settings');
+      this.notify();
     } catch {
-      // Tracker not up yet; try again on the next refresh.
+      // Tracker not up yet; keep what we had and try again.
     }
   }
 
   start(): void {
-    if (this.from === 'hub.env' || !this.admin.configured || this.timer) return;
+    if (!this.admin.configured || this.timer) return;
     this.stopped = false;
     const loop = (): void => {
       void this.refresh().finally(() => {
-        if (!this.stopped) this.timer = setTimeout(loop, this.value ? REFRESH_MS : RETRY_MS);
+        if (!this.stopped) this.timer = setTimeout(loop, this.fromTracker.home ? REFRESH_MS : RETRY_MS);
       });
     };
     loop();

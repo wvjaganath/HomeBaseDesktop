@@ -27,7 +27,7 @@ export function hasAnyUser(db: DB): boolean {
 /**
  * Whether the sign-in screen / iOS app may create accounts: always for the
  * very first account (a fresh hub has no other way in), otherwise only when
- * ALLOW_REGISTRATION=true.
+ * sign-up is turned on in Settings → Hub.
  */
 export function registrationOpen(db: DB, allowRegistration: boolean): boolean {
   return allowRegistration || !hasAnyUser(db);

@@ -94,6 +94,15 @@ const migrations: string[] = [
   );
   CREATE INDEX idx_password_resets_user ON password_resets(user_id);
   `,
+  // 2026-10: hub settings edited in the browser (Settings), instead of hub.env.
+  `
+  CREATE TABLE hub_settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    updated_by TEXT
+  );
+  `,
 ];
 
 export function openDb(dbPath: string): DB {

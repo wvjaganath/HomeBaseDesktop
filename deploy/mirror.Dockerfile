@@ -22,9 +22,11 @@ ENV NODE_ENV=production
 WORKDIR /opt/magic_mirror
 COPY --from=build /opt/magic_mirror ./
 COPY mirror/modules/MMM-HomeBase ./modules/MMM-HomeBase
+# Gets the screen token, home and units from the hub (no mirror.env).
+COPY mirror/homebase-start.cjs ./homebase-start.cjs
 # config/ is mounted read-only from deploy (see docker-compose.yml).
 USER 10001:10001
 EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \
   CMD ["node", "-e", "fetch('http://127.0.0.1:8080/version').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
-CMD ["node", "serveronly"]
+CMD ["node", "homebase-start.cjs"]

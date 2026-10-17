@@ -24,7 +24,7 @@
   <div class="off">
     <div class="card msg">
       <h1>Mirror isn’t set up</h1>
-      <p class="muted">Start the <code>magicmirror</code> service in <code>deploy/docker-compose.yml</code> and set <code>MIRROR_URL</code> in <code>hub.env</code> (see deploy/README.md).</p>
+      <p class="muted">Start the <code>magicmirror</code> service in <code>deploy/docker-compose.yml</code> (<code>docker compose up -d magicmirror</code>; see deploy/README.md).</p>
     </div>
   </div>
 {/if}

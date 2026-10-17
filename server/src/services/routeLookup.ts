@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import type { Env } from '../env.js';
+import { settingsFromEnv, type SettingsView } from './hubSettings.js';
 import { safeFetchJson, FetchError } from '../security/safeFetch.js';
 
 /**
@@ -90,10 +91,15 @@ export class RouteLookupService {
   private routes = new TtlCache<RouteInfo | null>();
   private airframes = new TtlCache<AirframeInfo | null>();
 
-  constructor(private readonly env: Env) {}
+  private readonly settings: SettingsView;
+
+  constructor(env: Env, settings?: SettingsView) {
+    this.settings = settings ?? settingsFromEnv(env);
+  }
 
   private fetch(path: string): Promise<unknown> {
-    const contact = this.env.ADSB_CONTACT ? ` (+${this.env.ADSB_CONTACT})` : '';
+    const c = this.settings().adsbContact;
+    const contact = c ? ` (+${c})` : '';
     return safeFetchJson(`https://${HOST}${path}`, {
       allowHosts: [HOST],
       timeoutMs: 6_000,

@@ -39,6 +39,15 @@ class Hub {
     this.connect();
   }
 
+  /** Re-read /api/config after Settings change units, the map key or the radar. */
+  async reloadConfig(): Promise<void> {
+    try {
+      this.config = await api.get<HubConfig>('/api/config');
+    } catch {
+      // keep the old one; the next page load picks it up
+    }
+  }
+
   async refreshLists(): Promise<void> {
     this.lists = await api.get<Lists>('/api/lists');
   }

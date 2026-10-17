@@ -59,8 +59,7 @@ git clone <this repo> homebase-desktop && cd homebase-desktop/deploy
 ./pin-images.sh                     # base images pinned by digest → deploy/.env
 $EDITOR .env                        # set HUB_HOSTS=192.168.1.20  (the PC's LAN IP, plus a name if you have one)
 cp hub.env.example hub.env && chmod 600 hub.env
-$EDITOR hub.env                     # JWT_SECRET, CARTO_API_KEY, ADSB_CONTACT … (HOME_LAT/LON and LED_BOARD_URL optional, §5)
-cp mirror.env.example mirror.env && chmod 600 mirror.env   # filled in at step 5
+$EDITOR hub.env                     # JWT_SECRET (openssl rand -hex 32). That's all; the rest is in the browser.
 mkdir -p data backups caddy-data tracker-data
 sudo chown -R 10001:10001 data backups caddy-data tracker-data && sudo chmod 700 data backups caddy-data tracker-data
 docker compose build
@@ -71,16 +70,28 @@ docker compose logs -f hub
 
 Check: `curl http://<pc-ip>:3000/health` → `{"ok":true}`.
 
-**Map background (Radar, Closest & farthest):** CARTO's dark map tiles now need
-a free key, or they show "API KEY REQUIRED". Get one at
-<https://carto.com/basemaps/apikey/> (no account; non-commercial use is free up
-to 5 million tiles a month), put it in `hub.env` as `CARTO_API_KEY=…` and
-`docker compose up -d hub`. The hub fetches and caches the tiles, so the key
-stays on the PC. Settings → Status shows whether it's set.
+### Where each setting lives
 
-**Home location:** the radar and maps use `HOME_LAT`/`HOME_LON` from `hub.env`
-if set, otherwise the home location saved in **Settings → Plane tracker**
-(picked up within a minute of saving).
+| Where | What |
+|---|---|
+| **Settings → Hub** (browser) | Sign-up on/off, how long sign-ins last, radar on/off and range, ADS-B contact, the CARTO map key, the LED board's address, backups, log detail. Saved on the hub, applied straight away. |
+| **Settings → Plane tracker** (browser) | Home location, units, zone, flights, API keys… The radar, maps and MagicMirror use this home location and units too, so they're set once. |
+| `deploy/hub.env` | `JWT_SECRET` only (plus the optional `SECRETS_KEY`). They sign sign-ins and encrypt saved secrets, so they can't be stored in the database they protect. |
+| `deploy/.env` | Docker-level: ports (`HTTPS_PORT`, `HTTP_PORT`, `TRACKER_FEED_PORT`), `HUB_HOSTS`, the time zone `TZ` (every container), image versions, `LOGOS_COMMIT`. A running app can't change these. |
+
+Upgrading from a version with more lines in `hub.env`: on its first start the
+hub copies those values into Settings once, and **Settings → Hub** lists the
+lines you can then delete. `mirror.env` isn't used any more.
+
+**After the first start**, in the browser:
+
+1. **Settings → Plane tracker → Location:** home lat, lon and units (and the
+   rest of the tracker's settings, §5).
+2. **Settings → Hub → Radar & maps:** paste a free CARTO key from
+   <https://carto.com/basemaps/apikey/> (no account; non-commercial use is free
+   up to 5 million tiles a month). Without it the map background says
+   "API KEY REQUIRED". The hub fetches and caches the tiles, so the key stays
+   on the PC; it's stored encrypted and never shown again.
 
 HomeBase uses port **8443** for HTTPS (not 443, so it never clashes with another
 web server on the PC). If Caddy fails with `address already in use`, something
@@ -114,7 +125,7 @@ In the browser (no PC needed):
   and other browsers are signed out and ask for the new one.
 - **First account:** on a hub with no accounts, the sign-in screen opens on
   *Set up HomeBase*, so you can create yours in the browser. After that,
-  sign-up locks again (unless you set `ALLOW_REGISTRATION=true` in `hub.env`).
+  sign-up locks again (unless you turn it on in **Settings → Hub → Sign-in**).
   The iPhone app's sign-up follows the same rule.
 
   If you're moving the old HomeBase server, copy its database first (§2,
@@ -218,9 +229,9 @@ only draws, spends no API credits and needs no keys.
    tracker hostname** to `http://<pc-ip>:8081` (the PC's LAN address; the
    `8081` is `TRACKER_FEED_PORT` in `deploy/.env`), save, and restart it.
    You can remove its API keys now.
-2. Optional, to manage the board from HomeBase too: put its address in
-   `deploy/hub.env` as `LED_BOARD_URL=http://<board-pi>:8080` and
-   `docker compose up -d hub`. **Settings → Plane tracker** then has a
+2. Optional, to manage the board from HomeBase too: put its address
+   (`http://<board-pi-ip>:8080`) in **Settings → Hub → LED board**.
+   **Settings → Plane tracker** then has a
    **This server / LED board** switch; the board side has the display, panel
    and Wi-Fi settings, and a **Follow this server** button that fills in step 1.
 
@@ -240,10 +251,12 @@ forwards only what the page needs, to signed-in people and paired screens, and
 blocks MagicMirror's `/cors` fetch-anything proxy. Its HomeBase panel (agenda,
 reminders, pinned notes) reads the hub with a **read-only screen token**:
 
-1. In the hub: **Settings → Screens** → name it `MagicMirror` → **Create link**.
-2. Copy the part of the link after `t=` (it starts with `hbd_`) into
-   `deploy/mirror.env` as `HOMEBASE_DEVICE_TOKEN=`, and fill in `HOME_LAT`/`HOME_LON`.
-3. `docker compose build magicmirror && docker compose up -d magicmirror`
+`docker compose build magicmirror && docker compose up -d magicmirror`. That's
+all: at start it asks the hub for its screen token (read-only, belonging to the
+hub's first account, listed under **Settings → Screens** as
+"MagicMirror (built in)"), home location and units. The hub answers only the
+MagicMirror container's fixed address. When the home location or units change
+in Settings, MagicMirror restarts itself within a minute to use them.
 
 Weather comes from Open-Meteo (no key). To change modules, edit
 `mirror/config/config.js` and `docker compose restart magicmirror`. The log lines
@@ -252,8 +265,8 @@ expected: the container is read-only and both files are prepared at build time.
 
 ## 7. Backups
 
-The hub backs up its database every night (03:07 by default, `BACKUP_HOUR` in
-`hub.env`) into `deploy/backups`, keeps the newest `BACKUP_KEEP` (14), and shows
+The hub backs up its database every night (03:07 by default) into
+`deploy/backups`, keeps the newest 14 (both in **Settings → Hub → Backups**), and shows
 the last one in **Settings → Status**, which also has **Back up now**. Files are
 owner-only SQLite copies made with SQLite's online backup API, so the hub keeps
 running. From the shell:
@@ -272,9 +285,9 @@ disk). For example, a nightly cron entry on the PC (`crontab -e`):
 To restore: `docker compose stop hub`, copy a backup over `deploy/data/homebase.db`
 (owner 10001, mode 600), delete `homebase.db-wal`/`-shm` if present, `docker compose start hub`.
 
-Also keep `deploy/hub.env` and `deploy/mirror.env` somewhere safe (a password
-manager): without `JWT_SECRET`/`SECRETS_KEY` the stored calendar addresses can't
-be decrypted.
+Also keep `deploy/hub.env` somewhere safe (a password manager): without
+`JWT_SECRET`/`SECRETS_KEY` the saved calendar addresses and map key can't be
+decrypted (everything else is in the database backups).
 
 ## 8. Updating
 

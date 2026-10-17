@@ -48,7 +48,7 @@
             <span class="label accent"><Icon name="plane" size={20} />Sky</span>
             {#if hub.config?.trackerEnabled === false && hub.config?.radarEnabled === false}
               <span class="big">Flight data is off</span>
-              <span class="muted">Set TRACKER_URL / HOME_LAT in the hub config.</span>
+              <span class="muted">Set the home location in Settings → Plane tracker → Location.</span>
             {:else}
               <span class="big">No plane in your box</span>
               <span class="muted">{radarCount} aircraft within {units === 'metric' ? 40 : 25} {distUnit(units)}</span>

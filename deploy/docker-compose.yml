@@ -2,8 +2,7 @@
 #
 #   cd deploy
 #   ./pin-images.sh                                     # base images by digest → .env
-#   cp hub.env.example hub.env && chmod 600 hub.env     # then fill it in
-#   cp mirror.env.example mirror.env && chmod 600 mirror.env
+#   cp hub.env.example hub.env && chmod 600 hub.env     # JWT_SECRET; the rest is in Settings
 #   mkdir -p data backups caddy-data tracker-data \
 #     && sudo chown -R 10001:10001 data backups caddy-data tracker-data \
 #     && sudo chmod 700 data backups caddy-data tracker-data
@@ -67,6 +66,10 @@ services:
       # Only Caddy (below) may set X-Forwarded-* headers.
       TRUST_PROXY: 172.30.87.10
       MIRROR_URL: http://magicmirror:8080
+      # Only this address may fetch MagicMirror's start-up settings from the hub.
+      MIRROR_CLIENT_IP: 172.30.88.30
+      # Secure cookies on https:// (Caddy), plain ones on the LAN-only :3000 port.
+      COOKIE_SECURE: auto
       # The bundled plane tracker (below). Overrides TRACKER_URL in hub.env.
       TRACKER_URL: http://tracker:8080
       TRACKER_BUNDLED: "true"
@@ -167,8 +170,7 @@ services:
         NODE_IMAGE: ${NODE_IMAGE:-node:26-bookworm-slim}
     image: homebase-magicmirror:local
     depends_on: [hub]
-    # HOMEBASE_DEVICE_TOKEN, HOME_LAT/LON, UNITS (see mirror.env.example).
-    env_file: ./mirror.env
+    # Token, home and units come from the hub at start (mirror/homebase-start.cjs).
     environment:
       TZ: ${TZ:-America/Chicago}
       NODE_ENV: production

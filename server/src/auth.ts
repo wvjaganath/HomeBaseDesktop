@@ -3,6 +3,7 @@ import argon2 from 'argon2';
 import { SignJWT, jwtVerify } from 'jose';
 import type { DB } from './db.js';
 import type { Env } from './env.js';
+import { settingsFromEnv, type SettingsView } from './services/hubSettings.js';
 
 const ISSUER = 'homebase';
 const AUDIENCE = 'homebase-api';
@@ -44,11 +45,15 @@ let dummyHash: Promise<string> | null = null;
 export class AuthService {
   private readonly secret: Uint8Array;
 
+  private readonly settings: SettingsView;
+
   constructor(
     private readonly db: DB,
-    private readonly env: Env,
+    env: Env,
+    settings?: SettingsView,
   ) {
     this.secret = new TextEncoder().encode(env.JWT_SECRET);
+    this.settings = settings ?? settingsFromEnv(env);
   }
 
   hashPassword(password: string): Promise<string> {
@@ -90,7 +95,7 @@ export class AuthService {
       .setIssuer(ISSUER)
       .setAudience(AUDIENCE)
       .setJti(randomUUID())
-      .setExpirationTime(`${this.env.ACCESS_TOKEN_TTL_MIN}m`)
+      .setExpirationTime(`${this.settings().accessTokenTtlMin}m`)
       .sign(this.secret);
   }
 
@@ -114,7 +119,7 @@ export class AuthService {
   issueRefreshToken(userId: string, familyId: string = randomUUID()): string {
     const token = randomBytes(48).toString('hex');
     const now = new Date();
-    const expires = new Date(now.getTime() + this.env.REFRESH_TOKEN_TTL_DAYS * 86_400_000);
+    const expires = new Date(now.getTime() + this.settings().refreshTokenTtlDays * 86_400_000);
     this.db
       .prepare(
         `INSERT INTO refresh_tokens (id, user_id, token_hash, family_id, expires_at, created_at)

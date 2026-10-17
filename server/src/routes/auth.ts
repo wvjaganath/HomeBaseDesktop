@@ -11,7 +11,8 @@ import { changePassword, createUser, hasAnyUser, registrationOpen, useResetToken
  *                 tokens are never readable by page JavaScript.
  */
 export default async function authRoutes(app: FastifyInstance): Promise<void> {
-  const { auth, env, db } = app.ctx;
+  const { auth, env, db, settings } = app.ctx;
+  const allowRegistration = (): boolean => settings.values.allowRegistration;
   const cookieOpts = (req: FastifyRequest) => {
     const secure = secureCookies(env.COOKIE_SECURE, req);
     return { names: cookieNames(secure), base: { httpOnly: true, secure, sameSite: 'strict' as const, path: '/' } };
@@ -22,8 +23,8 @@ export default async function authRoutes(app: FastifyInstance): Promise<void> {
 
   const setSessionCookies = (req: FastifyRequest, reply: FastifyReply, accessToken: string, refreshToken: string): void => {
     const { names, base } = cookieOpts(req);
-    reply.setCookie(names.access, accessToken, { ...base, maxAge: env.ACCESS_TOKEN_TTL_MIN * 60 });
-    reply.setCookie(names.refresh, refreshToken, { ...base, maxAge: env.REFRESH_TOKEN_TTL_DAYS * 86_400 });
+    reply.setCookie(names.access, accessToken, { ...base, maxAge: settings.values.accessTokenTtlMin * 60 });
+    reply.setCookie(names.refresh, refreshToken, { ...base, maxAge: settings.values.refreshTokenTtlDays * 86_400 });
   };
   const clearSessionCookies = (req: FastifyRequest, reply: FastifyReply): void => {
     const { names, base } = cookieOpts(req);
@@ -34,7 +35,7 @@ export default async function authRoutes(app: FastifyInstance): Promise<void> {
   // --- iOS app (Bearer tokens) ---------------------------------------------
 
   app.post('/auth/register', authLimit, async (req, reply) => {
-    if (!registrationOpen(db, env.ALLOW_REGISTRATION)) {
+    if (!registrationOpen(db, allowRegistration())) {
       return reply.code(403).send({ error: 'registration_disabled' });
     }
     const parsed = registerSchema.safeParse(req.body);
@@ -42,7 +43,7 @@ export default async function authRoutes(app: FastifyInstance): Promise<void> {
       return reply.code(400).send({ error: 'invalid_input', details: z.flattenError(parsed.error).fieldErrors });
     }
     try {
-      const user = await createUser(db, auth, parsed.data, { onlyIfNoAccounts: !env.ALLOW_REGISTRATION });
+      const user = await createUser(db, auth, parsed.data, { onlyIfNoAccounts: !allowRegistration() });
       req.log.info({ event: 'user_registered', via: 'app', userId: user.id }, 'account created');
       return {
         user,
@@ -139,16 +140,16 @@ export default async function authRoutes(app: FastifyInstance): Promise<void> {
 
   /** What the sign-in screen may offer. Public. */
   app.get('/auth/web/options', async () => ({
-    registration: registrationOpen(db, env.ALLOW_REGISTRATION),
+    registration: registrationOpen(db, allowRegistration()),
     firstAccount: !hasAnyUser(db),
   }));
 
   app.post('/auth/web/register', authLimit, async (req, reply) => {
-    if (!registrationOpen(db, env.ALLOW_REGISTRATION)) return reply.code(403).send({ error: 'registration_disabled' });
+    if (!registrationOpen(db, allowRegistration())) return reply.code(403).send({ error: 'registration_disabled' });
     const body = z.object({ email: z.string(), displayName: z.string(), password: z.string() }).safeParse(req.body);
     if (!body.success) return reply.code(400).send({ error: 'invalid_input' });
     try {
-      const user = await createUser(db, auth, body.data, { onlyIfNoAccounts: !env.ALLOW_REGISTRATION });
+      const user = await createUser(db, auth, body.data, { onlyIfNoAccounts: !allowRegistration() });
       req.log.info({ event: 'user_registered', via: 'web', userId: user.id }, 'account created');
       setSessionCookies(req, reply, await auth.signAccessToken(user.id, user.displayName), auth.issueRefreshToken(user.id));
       return { user };

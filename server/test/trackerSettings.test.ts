@@ -206,26 +206,35 @@ describe('plane tracker settings through the hub', () => {
     }
   });
 
-  it('edits the LED board with ?target=board, only when LED_BOARD_URL is set', async () => {
+  it('edits the LED board with ?target=board once its home-network address is in Settings', async () => {
     const port = (tracker.address() as AddressInfo).port;
-    const both = await testApp({ TRACKER_URL: 'http://127.0.0.1:9', TRACKER_BUNDLED: 'true', LED_BOARD_URL: `http://127.0.0.1:${port}` });
+    const both = await testApp({ TRACKER_URL: `http://127.0.0.1:${port}`, TRACKER_BUNDLED: 'true' });
     const u = await registerUser(both, 'board@example.com');
     const auth = { authorization: `Bearer ${u.accessToken}` };
-    const r = await both.inject({ method: 'GET', url: '/api/tracker-admin/settings?target=board', headers: auth });
-    expect(r.statusCode).toBe(200);
-    expect(r.json()).toMatchObject({ configured: true, bundled: true, board: true });
+    const none = await both.inject({ method: 'GET', url: '/api/tracker-admin/settings?target=board', headers: auth });
+    expect(none.json()).toEqual({ configured: false, bundled: true, board: false, boardUrl: '', feedPort: 8081 });
     expect((await both.inject({ method: 'GET', url: '/api/tracker-admin/settings?target=evil', headers: auth })).statusCode).toBe(400);
+
+    const cur = (await both.inject({ method: 'GET', url: '/api/hub-settings', headers: auth })).json<{ settings: Record<string, unknown> }>().settings;
+    const { cartoApiKeySet: _a, cartoApiKeyHint: _b, ...values } = cur;
+    // Only home-network addresses: not this machine, not the internet, not cloud metadata.
+    for (const bad of [`http://127.0.0.1:${port}`, 'http://localhost:8080', 'http://8.8.8.8', 'http://169.254.169.254', 'http://example.com:8080', 'http://192.168.1.60:8080/x']) {
+      const r = await both.inject({ method: 'PUT', url: '/api/hub-settings', headers: auth, payload: { ...values, ledBoardUrl: bad } });
+      expect(r.statusCode, bad).toBe(400);
+    }
+    const ok = await both.inject({ method: 'PUT', url: '/api/hub-settings', headers: auth, payload: { ...values, ledBoardUrl: 'http://192.168.1.60:8080/' } });
+    expect(ok.statusCode).toBe(200);
+    const set = await both.inject({ method: 'GET', url: '/api/tracker-admin/settings?target=board', headers: auth });
+    // Not reachable from the test machine, but it's now the board's address.
+    expect(set.statusCode).toBe(502);
+    expect(set.json()).toMatchObject({ bundled: true, board: true, boardUrl: 'http://192.168.1.60:8080' });
     await both.close();
-    const noBoard = await testApp({ TRACKER_URL: `http://127.0.0.1:${port}` });
-    const v = await registerUser(noBoard, 'nb@example.com');
-    expect((await noBoard.inject({ method: 'GET', url: '/api/tracker-admin/settings?target=board', headers: { authorization: `Bearer ${v.accessToken}` } })).json()).toEqual({ configured: false, bundled: false, board: false });
-    await noBoard.close();
-  });
+  }, 20_000);
 
   it('explains when TRACKER_URL isn’t set or the tracker is offline', async () => {
     const none = await testApp({});
     const u = await registerUser(none, 'a@example.com');
-    expect((await none.inject({ method: 'GET', url: '/api/tracker-admin/settings', headers: { authorization: `Bearer ${u.accessToken}` } })).json()).toEqual({ configured: false, bundled: false, board: false });
+    expect((await none.inject({ method: 'GET', url: '/api/tracker-admin/settings', headers: { authorization: `Bearer ${u.accessToken}` } })).json()).toEqual({ configured: false, bundled: false, board: false, boardUrl: '', feedPort: 8081 });
     await none.close();
     const off = await testApp({ TRACKER_URL: 'http://127.0.0.1:9' });
     const v = await registerUser(off, 'b@example.com');
