@@ -70,6 +70,11 @@ docker compose logs -f hub
 
 Check: `curl http://<pc-ip>:3000/health` → `{"ok":true}`.
 
+If Caddy fails with `address already in use` on 443 (or 8080), something else
+on the PC has that port: `sudo ss -ltnp 'sport = :443'` shows what. Either stop
+it, or put `HTTPS_PORT=8443` (and/or `HTTP_PORT=8081`) in `deploy/.env` and
+`docker compose up -d caddy`; the address then becomes `https://<pc-ip>:8443`.
+
 ### Moving the existing HomeBase server
 
 Copy the **existing database and secret** so the iPhones stay logged in and keep
