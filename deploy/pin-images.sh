@@ -48,7 +48,7 @@ umask 077
   # Your own settings are kept:
   grep -E '^TZ=' .env 2>/dev/null || echo "TZ=America/Chicago"
   grep -E '^HUB_HOSTS=' .env 2>/dev/null || echo "# HUB_HOSTS=192.168.1.20 homebase.lan   <- set this (the PC's LAN IP / name)"
-  grep -E '^(HTTPS_PORT|HTTP_PORT|TRACKER_FEED_PORT)=' .env 2>/dev/null || true
+  grep -E '^(HTTPS_PORT|HTTP_PORT|TRACKER_FEED_PORT|LOGOS_COMMIT)=' .env 2>/dev/null || true
 } > .env.new
 mv .env.new .env
 echo "Pinned:"; cat .env

@@ -65,7 +65,7 @@ mkdir -p data backups caddy-data tracker-data
 sudo chown -R 10001:10001 data backups caddy-data tracker-data && sudo chmod 700 data backups caddy-data tracker-data
 docker compose build
 docker compose up -d tracker hub caddy
-docker compose run --rm logos       # fetch the airline logo set (re-run monthly)
+docker compose run --rm logos       # download the airline logo set (a fixed commit: LOGOS_COMMIT)
 docker compose logs -f hub
 ```
 
@@ -218,7 +218,7 @@ only draws, spends no API credits and needs no keys.
 `/iss/json`, `/airport-status/json`), only to private-network addresses; every
 other path is a 404. Check from the board: `curl http://<pc-ip>:8081/clock/json`.
 
-Logs: `docker compose logs -f tracker`. Restart: **Restart tracker** in Settings,
+Logs: `docker compose logs -f tracker` (API keys are replaced by `[hidden]`; still, don't post these logs publicly). Restart: **Restart tracker** in Settings,
 or `docker compose restart tracker`. Start over: `docker compose stop tracker`,
 empty `deploy/tracker-data`, `docker compose up -d tracker`.
 

@@ -188,7 +188,9 @@ services:
     cpus: 0.5
     pids_limit: 128
 
-  # One-off helper: clones/updates the airline logo set into ./data/logo-src.
+  # One-off helper: downloads the airline logo set into ./data/logo-src, at
+  # one exact commit (so what you get can't change under you). To update,
+  # check the repo's newer commit and set LOGOS_COMMIT in deploy/.env.
   #   docker compose run --rm logos
   logos:
     <<: *hardening
@@ -201,8 +203,14 @@ services:
       - /tmp:size=64m,mode=1777
     environment:
       HOME: /tmp
+      LOGOS_COMMIT: ${LOGOS_COMMIT:-e0b218991caef4832e0db911136173e8eead942a}
     entrypoint: ["/bin/sh", "-c"]
     command:
       - >
-        if [ -d /data/logo-src/.git ]; then git -C /data/logo-src pull --ff-only;
-        else git clone --depth 1 https://github.com/Jxck-S/airline-logos /data/logo-src; fi
+        set -e;
+        mkdir -p /data/logo-src && cd /data/logo-src;
+        [ -d .git ] || git init -q;
+        git fetch -q --depth 1 https://github.com/Jxck-S/airline-logos "$$LOGOS_COMMIT";
+        git -c advice.detachedHead=false checkout -q --force FETCH_HEAD;
+        test "$$(git rev-parse HEAD)" = "$$LOGOS_COMMIT";
+        echo "Airline logos at $$LOGOS_COMMIT"

@@ -6,17 +6,22 @@ lives on the /data volume: /data/app mirrors the code tree with symlinks, while
 the files and folders the tracker writes are real files under /data/app.
 
 It also restarts the tracker when its web UI asks to (the "Restart" button
-writes .restart_requested because systemctl isn't available here), and stops
-the tracker and its Flask child together.
+writes .restart_requested because systemctl isn't available here), stops the
+tracker and its Flask child together, and passes their output on to the
+container log with API keys hidden (a failed request's error message can
+include its URL, key and all).
 """
 
 from __future__ import annotations
 
+import json
 import os
+import re
 import shutil
 import signal
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -30,6 +35,67 @@ WRITABLE_JSON = {"airlines.json", "airports.json", "airports_custom.json", "nati
 WRITABLE_DIRS = {Path("config"), Path("web/static/maps")}
 # Directories that must be real (so writable children can live inside them).
 REAL_PARENTS = {Path("web"), Path("web/static")}
+
+
+# key=value in URLs and messages, and "Bearer <token>" headers.
+_SECRET_PARAM = re.compile(r"(?i)\b((?:api[_-]?key|apikey|access[_-]?key|client[_-]?secret|secret|token|password)=)[^&\s'\"]+")
+_BEARER = re.compile(r"(?i)\b(bearer\s+)[A-Za-z0-9._~+/=-]{8,}")
+HIDDEN = "[hidden]"
+
+
+class Redactor:
+    """Hides the tracker's own API keys (from its secrets file) and anything
+    that looks like a key parameter or bearer token."""
+
+    def __init__(self, secrets_path: Path) -> None:
+        self.path = secrets_path
+        self.mtime = -1.0
+        self.values: list[str] = []
+
+    def _refresh(self) -> None:
+        try:
+            mtime = self.path.stat().st_mtime
+        except OSError:
+            self.values, self.mtime = [], -1.0
+            return
+        if mtime == self.mtime:
+            return
+        self.mtime = mtime
+        found: set[str] = set()
+
+        def walk(v: object) -> None:
+            if isinstance(v, str):
+                if len(v.strip()) >= 6:
+                    found.add(v.strip())
+            elif isinstance(v, list):
+                for x in v:
+                    walk(x)
+            elif isinstance(v, dict):
+                for x in v.values():
+                    walk(x)
+
+        try:
+            walk(json.loads(self.path.read_text(encoding="utf-8")))
+        except (OSError, ValueError):
+            pass
+        # Longest first, so a key that contains another is hidden whole.
+        self.values = sorted(found, key=len, reverse=True)
+
+    def __call__(self, line: str) -> str:
+        self._refresh()
+        for v in self.values:
+            if v in line:
+                line = line.replace(v, HIDDEN)
+        line = _SECRET_PARAM.sub(lambda m: m.group(1) + HIDDEN, line)
+        return _BEARER.sub(lambda m: m.group(1) + HIDDEN, line)
+
+
+def pump(stream, redact: Redactor) -> None:
+    """Copy the tracker's output to our stdout, line by line, redacted."""
+    for raw in iter(stream.readline, b""):
+        sys.stdout.write(redact(raw.decode("utf-8", "replace")))
+        sys.stdout.flush()
+    stream.close()
 
 
 def link(src: Path, dst: Path) -> None:
@@ -75,6 +141,7 @@ def main() -> int:
     flag.unlink(missing_ok=True)
 
     stopping = False
+    redact = Redactor(DATA / "config" / "secrets.json")
 
     def on_signal(signum, _frame):
         nonlocal stopping
@@ -90,7 +157,15 @@ def main() -> int:
         # Python imports the tracker's modules through /data/app and their
         # __file__-relative paths point at the writable state, not the code.
         boot = f"import runpy, sys; sys.path.insert(0, {str(DATA)!r}); runpy.run_path({str(DATA / 'its-a-plane.py')!r}, run_name='__main__')"
-        proc = subprocess.Popen([sys.executable, "-c", boot], cwd=DATA, start_new_session=True)
+        proc = subprocess.Popen(
+            [sys.executable, "-c", boot],
+            cwd=DATA,
+            start_new_session=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+        )
+        reader = threading.Thread(target=pump, args=(proc.stdout, redact), daemon=True)
+        reader.start()
         restart = False
         while proc.poll() is None and not stopping:
             if flag.exists():
@@ -114,6 +189,7 @@ def main() -> int:
                 os.killpg(proc.pid, signal.SIGTERM)
             except ProcessLookupError:
                 pass
+        reader.join(timeout=5)
         if stopping:
             break
         if not restart:

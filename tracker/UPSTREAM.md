@@ -31,8 +31,9 @@ Everything else is byte-for-byte upstream. HomeBase's own pieces live outside
 - `headless/bin/sudo`: fails on purpose, so the web UI's Restart falls back to
   `.restart_requested`, which the supervisor watches.
 - `headless/homebase_run.py`: keeps the code read-only and the tracker's
-  state (config, caches, logs, counters, maps) on the `/data` volume, and
-  restarts it on request.
+  state (config, caches, logs, counters, maps) on the `/data` volume,
+  restarts it on request, and hides API keys in its log output (upstream's
+  error messages can include a request URL with the key in it).
 - `requirements.txt`: the Python packages it imports, exact versions with hashes.
 
 ## Updating to a newer upstream version

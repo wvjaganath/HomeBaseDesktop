@@ -9,8 +9,9 @@ import { safeFetch } from '../security/safeFetch.js';
  * Airline logos by ICAO code, resized server-side to exactly the size a screen
  * needs (WebP) so the Pi never decodes oversized images.
  *
- * Source: a local clone of github.com/Jxck-S/airline-logos at
- * $DATA_DIR/logo-src (see deploy/docker-compose.yml, "logos" service).
+ * Source: a local clone of github.com/Jxck-S/airline-logos at a pinned commit,
+ * in $DATA_DIR/logo-src (see deploy/docker-compose.yml, "logos" service).
+ * Its files are treated as untrusted: plain PNG files only, size-capped.
  * Fallback: the tracker's own small logo, shown pixelated by the client.
  */
 const SOURCES = {
@@ -29,6 +30,25 @@ const querySchema = z.object({
     .default(96)
     .transform((h) => SIZES.reduce((best, s) => (Math.abs(s - h) < Math.abs(best - h) ? s : best), 96)),
 });
+
+const PNG_MAGIC = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+const MAX_SOURCE_BYTES = 5 * 1024 * 1024;
+
+/**
+ * A logo file from the downloaded set, only if it's a plain file (not a
+ * symlink, which a changed upstream repo could point anywhere), not oversized,
+ * and really a PNG. Otherwise null, and the next source is tried.
+ */
+export async function readLogoSource(file: string): Promise<Buffer | null> {
+  try {
+    const st = await fs.lstat(file);
+    if (!st.isFile() || st.size === 0 || st.size > MAX_SOURCE_BYTES) return null;
+    const buf = await fs.readFile(file);
+    return buf.subarray(0, 8).equals(PNG_MAGIC) ? buf : null;
+  } catch {
+    return null;
+  }
+}
 
 async function exists(p: string): Promise<boolean> {
   try {
@@ -59,12 +79,17 @@ export default async function logoRoutes(app: FastifyInstance): Promise<void> {
     }
 
     for (const dir of SOURCES[kind]) {
-      const file = path.join(srcRoot, dir, `${icao}.png`);
-      if (!(await exists(file))) continue;
-      const out = await sharp(file, { limitInputPixels: 4_000_000 })
-        .resize({ height: h, width: kind === 'banner' ? h * 8 : h, fit: 'inside', kernel: 'lanczos3', withoutEnlargement: false })
-        .webp({ quality: 90, alphaQuality: 100 })
-        .toBuffer();
+      const src = await readLogoSource(path.join(srcRoot, dir, `${icao}.png`));
+      if (!src) continue;
+      let out: Buffer;
+      try {
+        out = await sharp(src, { limitInputPixels: 4_000_000, failOn: 'error' })
+          .resize({ height: h, width: kind === 'banner' ? h * 8 : h, fit: 'inside', kernel: 'lanczos3', withoutEnlargement: false })
+          .webp({ quality: 90, alphaQuality: 100 })
+          .toBuffer();
+      } catch {
+        continue; // damaged image: try the next source
+      }
       await fs.mkdir(cacheRoot, { recursive: true });
       await fs.writeFile(cached, out);
       return reply.type('image/webp').send(out);
@@ -80,7 +105,7 @@ export default async function logoRoutes(app: FastifyInstance): Promise<void> {
           maxBytes: 256 * 1024,
         });
         reply.header('x-logo-source', 'tracker');
-        if (!res.bodyBuffer.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) throw new Error('not a png');
+        if (!res.bodyBuffer.subarray(0, 8).equals(PNG_MAGIC)) throw new Error('not a png');
         return await reply.type('image/png').send(res.bodyBuffer);
       } catch {
         // fall through
