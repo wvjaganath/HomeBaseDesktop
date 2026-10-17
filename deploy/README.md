@@ -91,6 +91,20 @@ sudo chown 10001:10001 deploy/data/homebase.db && sudo chmod 600 deploy/data/hom
 Then on each iPhone: HomeBase → Settings → Server → `http://<pc-ip>:3000` →
 Test connection. No app update is needed.
 
+### Accounts (add one, reset a password)
+
+There is no sign-up or "forgot password" page on purpose (`ALLOW_REGISTRATION=false`).
+Manage accounts from the PC instead; passwords are typed at a hidden prompt:
+
+```bash
+docker compose exec hub node dist/scripts/users.js list
+docker compose exec hub node dist/scripts/users.js add wife@example.com "Wife"
+docker compose exec hub node dist/scripts/users.js reset-password you@example.com
+```
+
+A reset signs that account out everywhere (phones and browsers sign in again
+with the new password). Passwords need 10–128 characters.
+
 ## 3. HTTPS: trust the hub once per computer
 
 Caddy made a private certificate authority for your house the first time it
