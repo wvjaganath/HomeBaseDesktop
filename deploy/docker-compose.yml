@@ -9,7 +9,7 @@
 #   docker compose build && docker compose up -d
 #
 # Ports (bind them to the PC's LAN address if it has more than one network):
-#   443   https://<pc>      every browser, the Pi screen included (Caddy)
+#   8443  https://<pc>:8443 every browser, the Pi screen included (Caddy)
 #   8080  http://<pc>:8080  redirects to https (old bookmarks and screen links)
 #   3000  http://<pc>:3000  the hub directly, for the HomeBase iPhone app
 #
@@ -89,7 +89,7 @@ services:
       # "192.168.1.20 homebase.lan". Set HUB_HOSTS in deploy/.env.
       HUB_HOSTS: ${HUB_HOSTS:?set HUB_HOSTS in deploy/.env (the PC's LAN IP and/or name)}
       # So http → https redirects point at the right port.
-      HTTPS_PORT: ${HTTPS_PORT:-443}
+      HTTPS_PORT: ${HTTPS_PORT:-8443}
       XDG_DATA_HOME: /data
       XDG_CONFIG_HOME: /config
     volumes:
@@ -103,9 +103,9 @@ services:
       edge:
         ipv4_address: 172.30.87.10
     ports:
-      # Change HTTPS_PORT / HTTP_PORT in deploy/.env if something else on the
-      # PC already uses 443 or 8080.
-      - "${HTTPS_PORT:-443}:8443"
+      # 8443 by default so HomeBase never fights another web server for 443.
+      # Change HTTPS_PORT / HTTP_PORT in deploy/.env if they're taken too.
+      - "${HTTPS_PORT:-8443}:8443"
       - "${HTTP_PORT:-8080}:8080"
     mem_limit: 128m
     cpus: 0.5

@@ -7,7 +7,7 @@ What runs on the PC (`docker compose`):
 
 | Service | Does | Reachable at |
 |---|---|---|
-| `caddy` | HTTPS for every browser, using its own local certificate authority | `https://<pc>` (443), `http://<pc>:8080` → redirects to https |
+| `caddy` | HTTPS for every browser, using its own local certificate authority | `https://<pc>:8443`, `http://<pc>:8080` → redirects to https |
 | `hub` | API, web app, sync for the iPhones, plane tracker + radar + calendar | `http://<pc>:3000` (the iPhone app's saved address) |
 | `magicmirror` | MagicMirror² for the Mirror tab | nowhere directly: only through the hub at `/mirror/` |
 
@@ -34,7 +34,7 @@ sudo apt update && sudo apt install -y unattended-upgrades ufw
 sudo dpkg-reconfigure -f noninteractive unattended-upgrades
 # Firewall: SSH + HomeBase from the home LAN only (adjust the subnet).
 sudo ufw default deny incoming
-for p in 22 443 8080 3000; do sudo ufw allow from 192.168.1.0/24 to any port $p proto tcp; done
+for p in 22 8443 8080 3000; do sudo ufw allow from 192.168.1.0/24 to any port $p proto tcp; done
 sudo ufw enable
 ```
 
@@ -44,7 +44,7 @@ SSH: put your public key in `~/.ssh/authorized_keys`, then set
 
 Docker publishes ports through its own iptables rules, which bypass ufw. Keep the
 PC on your LAN only (no port forwarding on the router), or bind the published
-ports to the LAN address in `docker-compose.yml` (for example `"192.168.1.20:443:8443"`).
+ports to the LAN address in `docker-compose.yml` (for example `"192.168.1.20:8443:8443"`).
 
 ## 2. Linux PC: run it
 
@@ -70,10 +70,11 @@ docker compose logs -f hub
 
 Check: `curl http://<pc-ip>:3000/health` → `{"ok":true}`.
 
-If Caddy fails with `address already in use` on 443 (or 8080), something else
-on the PC has that port: `sudo ss -ltnp 'sport = :443'` shows what. Either stop
-it, or put `HTTPS_PORT=8443` (and/or `HTTP_PORT=8081`) in `deploy/.env` and
-`docker compose up -d caddy`; the address then becomes `https://<pc-ip>:8443`.
+HomeBase uses port **8443** for HTTPS (not 443, so it never clashes with another
+web server on the PC). If Caddy fails with `address already in use`, something
+else has 8443 or 8080: `sudo ss -ltnp 'sport = :8443'` shows what. Pick free
+ports with `HTTPS_PORT=…` / `HTTP_PORT=…` in `deploy/.env`, then
+`docker compose up -d caddy`.
 
 ### Moving the existing HomeBase server
 
@@ -128,7 +129,7 @@ checking the fingerprint matches:
   (Firefox: Settings → Certificates → Import).
 - **Raspberry Pi screen:** handled by `setup-pi.sh --ca` (step 4).
 
-Then open `https://<pc-ip>` (or the name you put in `HUB_HOSTS`). Signing in
+Then open `https://<pc-ip>:8443` (or the name you put in `HUB_HOSTS`). Signing in
 over HTTPS gives the browser Secure, `__Host-` cookies. The hub only trusts
 `X-Forwarded-*` headers from Caddy's fixed address, so nobody on the LAN can
 fake being on HTTPS. The iPhone app keeps using `http://<pc-ip>:3000`.
@@ -138,14 +139,14 @@ Changing `HUB_HOSTS` later: edit `deploy/.env`, then `docker compose up -d caddy
 ## 4. Raspberry Pi 3 B screen
 
 1. Flash Raspberry Pi OS (Bookworm, with desktop) and boot it on your network.
-2. On a computer, open the hub at `https://<pc-ip>` → **Settings → Screens →
+2. On a computer, open the hub at `https://<pc-ip>:8443` → **Settings → Screens →
    Create link**, and copy the command it shows.
 3. On the Pi:
    ```bash
    # from the Linux PC:
    scp deploy/kiosk/setup-pi.sh deploy/homebase-ca.crt pi@<pi-ip>:
    # then on the Pi:
-   sudo bash setup-pi.sh --ca homebase-ca.crt "https://<pc-ip>/kiosk/pair?t=hbd_…"
+   sudo bash setup-pi.sh --ca homebase-ca.crt "https://<pc-ip>:8443/kiosk/pair?t=hbd_…"
    sudo reboot
    ```
    The script prints the certificate fingerprint; check it matches step 3.

@@ -3,10 +3,10 @@
 # Bookworm with the desktop (labwc/Wayland or the older X11 session).
 #
 # Usage (on the Pi, as a sudo-capable user):
-#   sudo bash setup-pi.sh --ca homebase-ca.crt "https://<linux-pc-ip>/kiosk/pair?t=hbd_xxxxxxxx"
+#   sudo bash setup-pi.sh --ca homebase-ca.crt "https://<linux-pc-ip>:8443/kiosk/pair?t=hbd_xxxxxxxx"
 #
 # --ca installs the hub's local HTTPS certificate authority (see
-# deploy/README.md §6) so Chromium trusts https://<pc>. Without it, use the
+# deploy/README.md §6) so Chromium trusts https://<pc>:8443. Without it, use the
 # plain http://<pc>:3000/kiosk/pair?t=… link instead.
 #
 # Get the pairing link from the hub: Settings → Screens → Add screen.
@@ -25,7 +25,7 @@ if [[ "${1:-}" == "--ca" ]]; then
 fi
 PAIR_URL="${1:-}"
 if [[ ! "$PAIR_URL" =~ ^https?://[A-Za-z0-9._:-]+/kiosk/pair\?t=hbd_[A-Za-z0-9_-]{43}$ ]]; then
-  echo "Usage: sudo bash $0 [--ca homebase-ca.crt] \"https://<hub>/kiosk/pair?t=hbd_…\"" >&2
+  echo "Usage: sudo bash $0 [--ca homebase-ca.crt] \"https://<hub>:8443/kiosk/pair?t=hbd_…\"" >&2
   exit 1
 fi
 if [[ "$PAIR_URL" == https://* && -z "$CA_FILE" ]]; then

@@ -4,7 +4,7 @@
 # no internet exposure, no Let's Encrypt. Trust its root certificate once on
 # each computer/Pi (deploy/README.md §6) and browsers show a normal padlock.
 #
-#   https://<HUB_HOSTS>  →  hub        (all browsers, the Pi included)
+#   https://<HUB_HOSTS>:8443  →  hub   (all browsers, the Pi included)
 #   http://…:8080        →  308 to https (old bookmarks / screen links)
 #   http://…:3000        →  hub directly, published by the hub service (iPhones)
 {
@@ -12,7 +12,7 @@
 	admin off
 	# The container can't (and shouldn't) touch a system trust store.
 	skip_install_trust
-	# Unprivileged ports inside the container; compose maps 443 → 8443.
+	# Unprivileged ports inside the container (published as HTTPS_PORT, default 8443).
 	http_port 8080
 	https_port 8443
 	auto_https disable_redirects
@@ -50,5 +50,5 @@
 }
 
 http://:8080 {
-	redir https://{host}:{$HTTPS_PORT:443}{uri} 308
+	redir https://{host}:{$HTTPS_PORT:8443}{uri} 308
 }
