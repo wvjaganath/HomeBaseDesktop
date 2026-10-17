@@ -15,6 +15,7 @@ import deviceRoutes from './routes/devices.js';
 import logoRoutes from './routes/logos.js';
 import mirrorRoutes from './routes/mirror.js';
 import statusRoutes from './routes/status.js';
+import peopleRoutes from './routes/people.js';
 import shareRoutes from './routes/shares.js';
 import streamRoutes from './routes/stream.js';
 import syncRoutes from './routes/sync.js';
@@ -127,6 +128,7 @@ export async function buildApp(opts: BuildOptions): Promise<FastifyInstance> {
   await app.register(logoRoutes);
   await app.register(mirrorRoutes);
   await app.register(statusRoutes);
+  await app.register(peopleRoutes);
 
   const webDist = opts.webDist ?? path.join(serverRoot, 'web-dist');
   if (fs.existsSync(webDist)) {

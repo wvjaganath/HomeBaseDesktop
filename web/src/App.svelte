@@ -12,6 +12,7 @@
   import Flights from './screens/Flights.svelte';
   import Home from './screens/Home.svelte';
   import Login from './screens/Login.svelte';
+  import ResetPassword from './screens/ResetPassword.svelte';
   import Settings from './screens/Settings.svelte';
 
   // Heavier screens load only when opened (README §6.7 budget): Radar pulls in
@@ -35,7 +36,7 @@
 
   const device = $derived(hub.me?.kind === 'device' ? hub.me.device : null);
   const settings = $derived<DeviceSettings | null>(device?.settings ?? null);
-  const route = $derived(router.route === 'kiosk' || router.route === 'login' ? 'home' : router.route);
+  const route = $derived(router.route === 'kiosk' || router.route === 'login' || router.route === 'reset' ? 'home' : router.route);
 
   async function init(): Promise<void> {
     phase = 'loading';
@@ -110,7 +111,9 @@
 
 <svelte:window onmousemove={poke} ontouchstart={poke} />
 
-{#if phase === 'loading'}
+{#if router.route === 'reset'}
+  <ResetPassword onDone={() => { hub.disconnect(); sync.reset(); hub.me = null; router.go('login'); void init(); }} />
+{:else if phase === 'loading'}
   <div class="center muted">Loading…</div>
 {:else if phase === 'login'}
   <Login onSignedIn={() => void init()} />

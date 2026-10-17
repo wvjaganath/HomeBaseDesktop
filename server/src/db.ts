@@ -82,6 +82,18 @@ const migrations: string[] = [
   );
   CREATE INDEX idx_calendar_sources_user ON calendar_sources(user_id);
   `,
+  // 2026-10: one-time password reset links (made on the PC with the users script).
+  `
+  CREATE TABLE password_resets (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES users(id),
+    token_hash TEXT NOT NULL UNIQUE,
+    expires_at TEXT NOT NULL,
+    used_at TEXT,
+    created_at TEXT NOT NULL
+  );
+  CREATE INDEX idx_password_resets_user ON password_resets(user_id);
+  `,
 ];
 
 export function openDb(dbPath: string): DB {

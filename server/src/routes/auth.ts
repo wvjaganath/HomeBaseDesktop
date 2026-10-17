@@ -3,6 +3,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { credentialsSchema, registerSchema, refreshSchema } from '../schemas.js';
 import { cookieNames, secureCookies } from '../security/principal.js';
+import { changePassword, createUser, useResetToken, UserAdminError } from '../services/userAdmin.js';
 
 /**
  * Two flavours of the same login:
@@ -136,6 +137,57 @@ export default async function authRoutes(app: FastifyInstance): Promise<void> {
     if (presented) auth.revokeFamilyByToken(presented);
     clearSessionCookies(req, reply);
     return { ok: true };
+  });
+
+  // Sign-up, password change and reset for the browser (README §7.4: no email
+  // is sent anywhere; reset links are made on the PC with the users script).
+
+  /** What the sign-in screen may offer. Public. */
+  app.get('/auth/web/options', async () => ({ registration: env.ALLOW_REGISTRATION }));
+
+  app.post('/auth/web/register', authLimit, async (req, reply) => {
+    if (!env.ALLOW_REGISTRATION) return reply.code(403).send({ error: 'registration_disabled' });
+    const body = z.object({ email: z.string(), displayName: z.string(), password: z.string() }).safeParse(req.body);
+    if (!body.success) return reply.code(400).send({ error: 'invalid_input' });
+    try {
+      const user = await createUser(db, auth, body.data);
+      req.log.info({ event: 'user_registered', via: 'web', userId: user.id }, 'account created');
+      setSessionCookies(req, reply, await auth.signAccessToken(user.id, user.displayName), auth.issueRefreshToken(user.id));
+      return { user };
+    } catch (err) {
+      if (err instanceof UserAdminError) return reply.code(400).send({ error: 'invalid_input', message: err.message });
+      throw err;
+    }
+  });
+
+  app.post('/auth/web/password', { ...authLimit, preHandler: [app.requireUser] }, async (req, reply) => {
+    const body = z.object({ currentPassword: z.string().max(200), newPassword: z.string().max(200) }).safeParse(req.body);
+    if (!body.success) return reply.code(400).send({ error: 'invalid_input' });
+    try {
+      await changePassword(db, auth, req.userId, body.data.currentPassword, body.data.newPassword);
+    } catch (err) {
+      if (err instanceof UserAdminError) return reply.code(400).send({ error: 'invalid_input', message: err.message });
+      throw err;
+    }
+    req.log.info({ event: 'password_changed', userId: req.userId }, 'password changed; other sessions ended');
+    // Every session was ended; keep this browser signed in with a fresh one.
+    const user = auth.findUserById(req.userId);
+    if (user) setSessionCookies(req, reply, await auth.signAccessToken(user.id, user.display_name), auth.issueRefreshToken(user.id));
+    return { ok: true };
+  });
+
+  app.post('/auth/web/reset', authLimit, async (req, reply) => {
+    const body = z.object({ token: z.string().max(100), newPassword: z.string().max(200) }).safeParse(req.body);
+    if (!body.success) return reply.code(400).send({ error: 'invalid_input' });
+    try {
+      const { email } = await useResetToken(db, auth, body.data.token, body.data.newPassword);
+      req.log.info({ event: 'password_reset' }, 'password reset with a one-time link');
+      clearSessionCookies(req, reply);
+      return { ok: true, email };
+    } catch (err) {
+      if (err instanceof UserAdminError) return reply.code(400).send({ error: 'invalid_input', message: err.message });
+      throw err;
+    }
   });
 
   /** Who am I? Used by the web app on load (user or kiosk device). */

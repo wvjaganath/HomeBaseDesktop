@@ -4,6 +4,7 @@
  *   docker compose exec hub node dist/scripts/users.js list
  *   docker compose exec hub node dist/scripts/users.js add <email> "<Name>"
  *   docker compose exec hub node dist/scripts/users.js reset-password <email>
+ *   docker compose exec hub node dist/scripts/users.js reset-link <email>
  *
  * Passwords are typed at a hidden prompt (twice), never passed as arguments,
  * so they don't end up in shell history or the process list. Without a
@@ -12,12 +13,13 @@
 import { AuthService } from '../auth.js';
 import { openDb } from '../db.js';
 import { loadEnv } from '../env.js';
-import { createUser, listUsers, resetPassword, UserAdminError } from '../services/userAdmin.js';
+import { createResetToken, createUser, listUsers, resetPassword, UserAdminError } from '../services/userAdmin.js';
 
 const USAGE = `Usage:
   node dist/scripts/users.js list
   node dist/scripts/users.js add <email> "<Display name>"
-  node dist/scripts/users.js reset-password <email>`;
+  node dist/scripts/users.js reset-password <email>
+  node dist/scripts/users.js reset-link <email>     (one-time link, 30 minutes)`;
 
 let pipedLines: string[] | null = null;
 async function readPiped(): Promise<string> {
@@ -109,6 +111,13 @@ async function main(): Promise<void> {
       const [email = ''] = args;
       const ended = await resetPassword(db, auth, email, await newPassword());
       console.log(`Password changed for ${email.toLowerCase()}. Signed out of ${ended} session(s); sign in again with the new password.`);
+    } else if (cmd === 'reset-link' && args.length === 1) {
+      const [email = ''] = args;
+      const { token, expiresAt } = createResetToken(db, auth, email);
+      console.log(`One-time reset link for ${email.toLowerCase()} (works once, until ${new Date(expiresAt).toLocaleTimeString()}):\n`);
+      console.log(`  https://<your hub address>/#/reset?t=${token}\n`);
+      console.log('Replace <your hub address> with what you type in the browser, e.g. 192.168.1.20:8443.');
+      console.log('Treat it like a password: anyone with it can set a new password for this account.');
     } else {
       console.error(USAGE);
       process.exitCode = 2;

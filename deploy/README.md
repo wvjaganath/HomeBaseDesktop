@@ -94,17 +94,35 @@ Test connection. No app update is needed.
 
 ### Accounts (add one, reset a password)
 
-There is no sign-up or "forgot password" page on purpose (`ALLOW_REGISTRATION=false`).
-Manage accounts from the PC instead; passwords are typed at a hidden prompt:
+In the browser (no PC needed):
+
+- **Add a person:** Settings → People → Add a person (name, email, a starting
+  password they then change).
+- **Change your password:** Settings → Account → Change password. Your phones
+  and other browsers are signed out and ask for the new one.
+- **Create an account** on the sign-in screen works only if you set
+  `ALLOW_REGISTRATION=true` in `hub.env`; otherwise it explains the above.
+
+**Forgot password** (the sign-in screen shows these steps too): HomeBase sends no
+email, so whoever runs the hub makes a one-time link on the PC:
+
+```bash
+docker compose exec hub node dist/scripts/users.js reset-link wife@example.com
+```
+
+Open the printed link (put your hub's address in place of `<your hub address>`,
+e.g. `192.168.1.20:8443`) and choose a new password. It works once, for 30
+minutes, and signs that account out everywhere. Nobody can reset *someone
+else's* password from the browser, so one account can't take over another.
+
+Other commands (`list`, `add`, and `reset-password`, which sets a password right
+there without a link):
 
 ```bash
 docker compose exec hub node dist/scripts/users.js list
 docker compose exec hub node dist/scripts/users.js add wife@example.com "Wife"
 docker compose exec hub node dist/scripts/users.js reset-password you@example.com
 ```
-
-A reset signs that account out everywhere (phones and browsers sign in again
-with the new password). Passwords need 10–128 characters.
 
 ## 3. HTTPS: trust the hub once per computer
 

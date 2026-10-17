@@ -1,6 +1,8 @@
 <script lang="ts">
   import Icon from '../components/Icon.svelte';
   import StatusPanel from '../components/StatusPanel.svelte';
+  import PeoplePanel from '../components/PeoplePanel.svelte';
+  import ChangePassword from '../components/ChangePassword.svelte';
   import { ApiError, api } from '../lib/api';
   import { hub } from '../lib/hub.svelte';
   import { sync } from '../lib/sync.svelte';
@@ -232,9 +234,12 @@
 
   <StatusPanel />
 
+  <PeoplePanel />
+
   <section class="card">
     <h2>Account</h2>
     <p class="muted">Signed in as {hub.me?.kind === 'user' ? hub.me.user?.email : ''}.</p>
+    <ChangePassword />
     <div class="row">
       <button class="btn" disabled={exporting} onclick={exportData}>{exporting ? 'Preparing…' : 'Download my data (JSON)'}</button>
       <button class="btn" onclick={() => { sync.reset(); void signOut(); }}><Icon name="logout" size={18} /> Sign out</button>

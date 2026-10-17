@@ -6,6 +6,8 @@ export class ApiError extends Error {
   constructor(
     readonly status: number,
     readonly code: string,
+    /** A human-readable explanation from the hub, when it sent one. */
+    readonly detail?: string,
   ) {
     super(code);
     this.name = 'ApiError';
@@ -29,6 +31,8 @@ export function refreshSession(): Promise<boolean> {
   return refreshing;
 }
 
+const NO_REFRESH = new Set(['/auth/web/login', '/auth/web/refresh', '/auth/web/logout', '/auth/web/register', '/auth/web/reset']);
+
 async function request<T>(method: string, path: string, body?: unknown, retry = true): Promise<T> {
   const init: RequestInit = { method, credentials: 'same-origin', headers: { accept: 'application/json' } };
   if (body !== undefined) {
@@ -36,19 +40,22 @@ async function request<T>(method: string, path: string, body?: unknown, retry = 
     init.body = JSON.stringify(body);
   }
   const res = await fetch(path, init);
-  if (res.status === 401 && retry && !path.startsWith('/auth/web/')) {
+  // Signed-out endpoints answer 401 for a wrong password; don't refresh for those.
+  if (res.status === 401 && retry && !NO_REFRESH.has(path)) {
     if (await refreshSession()) return request<T>(method, path, body, false);
     onSignedOut();
   }
   if (!res.ok) {
     let code = `http_${res.status}`;
+    let detail: string | undefined;
     try {
-      const data = (await res.json()) as { error?: string };
+      const data = (await res.json()) as { error?: string; message?: string };
       if (data.error) code = data.error;
+      if (typeof data.message === 'string') detail = data.message;
     } catch {
       // non-JSON error
     }
-    throw new ApiError(res.status, code);
+    throw new ApiError(res.status, code, detail);
   }
   return (await res.json()) as T;
 }
