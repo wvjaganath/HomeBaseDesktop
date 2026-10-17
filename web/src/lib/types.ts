@@ -83,6 +83,7 @@ export interface RadarAircraft {
 
 export interface RadarSnapshot {
   enabled: boolean;
+  off?: 'disabled' | 'no_home' | null;
   source: string | null;
   updatedAt: string | null;
   home: { lat: number; lon: number };
@@ -142,6 +143,11 @@ export interface HubConfig {
   trackerEnabled: boolean;
   /** The tracker runs on this server (docker compose). */
   trackerBundled?: boolean;
+  /** Why the radar is off, if it is. */
+  radarOff?: 'disabled' | 'no_home' | null;
+  /** CARTO_API_KEY is set (map tiles without the "API KEY REQUIRED" stamp). */
+  mapKey?: boolean;
+  homeSource?: 'hub.env' | 'tracker' | null;
   radarEnabled: boolean;
   mirrorEnabled: boolean;
   calendarColors: string[];

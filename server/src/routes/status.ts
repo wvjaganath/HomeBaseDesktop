@@ -67,9 +67,10 @@ export default async function statusRoutes(app: FastifyInstance): Promise<void> 
         error: backup.lastError,
       },
       tracker: { enabled: t.enabled, reachable: t.reachable, updatedAt: t.updatedAt },
-      radar: { enabled: r.enabled, source: r.source, updatedAt: r.updatedAt, aircraft: r.aircraft.length },
+      radar: { enabled: r.enabled, off: r.off, source: r.source, updatedAt: r.updatedAt, aircraft: r.aircraft.length, homeSource: app.ctx.home.source },
       calendars: sources.map((s) => ({ name: s.name, ok: s.ok, error: s.error, fetchedAt: s.fetchedAt })),
       mirror: { enabled: env.MIRROR_URL !== '', reachable: await mirrorReachable() },
+      mapTiles: { key: env.CARTO_API_KEY !== '' },
       screens: { count: screens.n, lastSeenAt: screens.last },
     };
   });

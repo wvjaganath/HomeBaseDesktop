@@ -80,6 +80,12 @@ const envSchema = z.object({
     .transform((v) => v.replace(/\/$/, '')),
 
   RADAR_ENABLED: bool.default(true),
+  // Free key for CARTO's dark map tiles (https://carto.com/basemaps/apikey/).
+  // Without it the map background says "API KEY REQUIRED".
+  CARTO_API_KEY: z
+    .string()
+    .default('')
+    .refine((v) => v === '' || /^[A-Za-z0-9_.-]{8,200}$/.test(v), 'CARTO_API_KEY should be the key from carto.com/basemaps/apikey (letters, digits, - _ .)'),
   RADAR_RADIUS_NM: z.coerce.number().int().min(5).max(100).default(30),
   ADSB_CONTACT: z.string().max(200).default(''),
 

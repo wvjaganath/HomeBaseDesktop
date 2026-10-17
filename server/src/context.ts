@@ -6,6 +6,7 @@ import { EventBus } from './events.js';
 import { BackupService } from './services/backup.js';
 import { SecretBox } from './security/secretBox.js';
 import { CalendarService } from './services/calendar.js';
+import { HomeLocation } from './services/home.js';
 import { RadarService } from './services/radar.js';
 import { RouteLookupService } from './services/routeLookup.js';
 import { TrackerService } from './services/tracker.js';
@@ -18,6 +19,8 @@ export interface AppContext {
   auth: AuthService;
   secretBox: SecretBox;
   tracker: TrackerService;
+  /** Home for the radar and maps: hub.env, else the plane tracker's settings. */
+  home: HomeLocation;
   radar: RadarService;
   routes: RouteLookupService;
   calendar: CalendarService;
@@ -27,6 +30,7 @@ export interface AppContext {
 export function createContext(env: Env, db: DB, log: FastifyBaseLogger): AppContext {
   const bus = new EventBus();
   const secretBox = new SecretBox(env.SECRETS_KEY, env.JWT_SECRET);
+  const home = new HomeLocation(env, log.child({ svc: 'home' }));
   return {
     env,
     db,
@@ -34,7 +38,8 @@ export function createContext(env: Env, db: DB, log: FastifyBaseLogger): AppCont
     auth: new AuthService(db, env),
     secretBox,
     tracker: new TrackerService(env, bus, log.child({ svc: 'tracker' })),
-    radar: new RadarService(env, bus, log.child({ svc: 'radar' })),
+    home,
+    radar: new RadarService(env, bus, log.child({ svc: 'radar' }), home),
     routes: new RouteLookupService(env),
     calendar: new CalendarService(db, secretBox, bus, log.child({ svc: 'calendar' })),
     backup: new BackupService(db, env, log.child({ svc: 'backup' })),

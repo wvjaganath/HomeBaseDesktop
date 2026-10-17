@@ -58,6 +58,8 @@ export default async function trackerSettingsRoutes(app: FastifyInstance): Promi
     try {
       await admin.saveSettings(parsed.data);
       req.log.info({ event: 'tracker_settings_saved', by: req.userId, target: admin === admins.board ? 'board' : 'tracker' }, 'plane tracker settings saved');
+      // The radar and maps use the tracker's home when hub.env has none.
+      if (admin === admins.tracker) void app.ctx.home.refresh();
       return { ok: true };
     } catch (err) {
       return fail(reply, err);

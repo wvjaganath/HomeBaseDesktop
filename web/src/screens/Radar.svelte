@@ -60,22 +60,24 @@
   );
   const trackerFlight = $derived(selected ? overhead.find((f) => f.callsign === selected.callsign) : undefined);
 
+  // Home can come from hub.env or, later, from the plane tracker's settings.
+  const known = (h: { lat: number; lon: number } | undefined | null): h is { lat: number; lon: number } => !!h && !(h.lat === 0 && h.lon === 0);
+  const home = $derived(known(hub.radar?.home) ? hub.radar.home : known(hub.config?.home) ? hub.config.home : null);
+  const offReason = $derived(hub.radar?.off ?? hub.config?.radarOff ?? null);
+  const mapKey = $derived(hub.config?.mapKey !== false);
+
   onMount(() => {
     hub.setRadarInterest(true);
-    const home = hub.config?.home ?? { lat: 0, lon: 0 };
     if (!mapEl) return;
-    map = L.map(mapEl, { zoomControl: false, attributionControl: true, preferCanvas: true }).setView([home.lat, home.lon], 10);
+    const start = home ?? { lat: 0, lon: 0 };
+    map = L.map(mapEl, { zoomControl: false, attributionControl: true, preferCanvas: true }).setView([start.lat, start.lon], home ? 10 : 6);
     map.attributionControl.setPrefix(false);
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-      subdomains: 'abcd',
+    // Tiles come through the hub, which adds the CARTO key (CARTO_API_KEY).
+    L.tileLayer('/api/tiles/{z}/{x}/{y}{r}.png', {
       maxZoom: 14,
       minZoom: 6,
       attribution: '© OpenStreetMap contributors © CARTO · Aircraft: adsb.lol / adsb.fi',
     }).addTo(map);
-    for (const mi of [5, 10, 25]) {
-      L.circle([home.lat, home.lon], { radius: mi * MI_TO_M, color: '#223040', weight: 1.5, fill: false, interactive: false }).addTo(map);
-    }
-    L.circleMarker([home.lat, home.lon], { radius: 8, color: '#2dd4bf', fillColor: '#2dd4bf', fillOpacity: 1, weight: 0, interactive: false }).addTo(map);
     const planes = new PlaneLayer();
     planes.addTo(map);
     layer = planes;
@@ -87,6 +89,27 @@
       }
     });
     map.on('dragstart', () => (follow = false));
+  });
+
+  // Range rings and the home dot; re-centre when home becomes known.
+  let homeGroup: L.LayerGroup | null = null;
+  let centred = '';
+  $effect(() => {
+    const m = map;
+    const h = home;
+    if (!m || !h) return;
+    const key = `${h.lat},${h.lon}`;
+    if (key === centred) return;
+    centred = key;
+    homeGroup?.remove();
+    const g = L.layerGroup();
+    for (const mi of [5, 10, 25]) {
+      L.circle([h.lat, h.lon], { radius: mi * MI_TO_M, color: '#223040', weight: 1.5, fill: false, interactive: false }).addTo(g);
+    }
+    L.circleMarker([h.lat, h.lon], { radius: 8, color: '#2dd4bf', fillColor: '#2dd4bf', fillOpacity: 1, weight: 0, interactive: false }).addTo(g);
+    g.addTo(m);
+    homeGroup = g;
+    m.setView([h.lat, h.lon], 10);
   });
 
   onDestroy(() => {
@@ -168,9 +191,9 @@
   $effect(() => {
     if (!map || !follow) return;
     const hot = aircraft.find((a) => overheadCallsigns.has(a.callsign));
-    const home = hub.config?.home;
+    const h = home;
     if (hot) map.panTo([hot.lat, hot.lon], { animate: !hub.isKiosk, duration: 1 });
-    else if (home) map.panTo([home.lat, home.lon], { animate: !hub.isKiosk, duration: 1 });
+    else if (h) map.panTo([h.lat, h.lon], { animate: !hub.isKiosk, duration: 1 });
   });
 
   // Look up route + airframe for the selected plane (cached server-side).
@@ -194,7 +217,6 @@
   function recenter(): void {
     follow = true;
     selectedHex = null;
-    const home = hub.config?.home;
     if (map && home) map.setView([home.lat, home.lon], 10);
   }
 
@@ -237,6 +259,9 @@
   </div>
 
   <aside class="panel">
+    {#if !mapKey && !hub.isKiosk}
+      <p class="keynote" role="note">The map background needs a free CARTO key (it says “API KEY REQUIRED” without one). Get one at <a href="https://carto.com/basemaps/apikey/" target="_blank" rel="noopener noreferrer">carto.com/basemaps/apikey</a>, put it in hub.env as <code>CARTO_API_KEY=</code>, then <code>docker compose up -d hub</code>.</p>
+    {/if}
     {#if selected}
       <div class="who">
         <Logo icao={logoIcao} size={84} />
@@ -272,7 +297,13 @@
       </div>
       <AircraftPhoto hex={selected.hex} width={440} />
     {:else}
-      <p class="muted">{hub.config?.radarEnabled === false ? 'Radar is off. Set HOME_LAT / HOME_LON in the hub config.' : 'Waiting for aircraft data…'}</p>
+      {#if offReason === 'disabled'}
+        <p class="muted">Radar is turned off (<code>RADAR_ENABLED=false</code> in hub.env).</p>
+      {:else if offReason === 'no_home' || !home}
+        <p class="muted">Radar is waiting for your home location. Set it in <a href="#/tracker-settings">Settings → Plane tracker</a> (Home lat, lon), or as <code>HOME_LAT</code> / <code>HOME_LON</code> in hub.env.</p>
+      {:else}
+        <p class="muted">Waiting for aircraft data…</p>
+      {/if}
     {/if}
 
     {#if aircraft.length > 0}
@@ -294,6 +325,15 @@
 </div>
 
 <style>
+  .keynote {
+    margin: 0 0 16px;
+    padding: 12px 14px;
+    font-size: 14px;
+    line-height: 1.45;
+    border-radius: 10px;
+    border: 1px solid var(--line-2);
+    background: var(--surface-2);
+  }
   .radar {
     height: 100%;
     display: flex;

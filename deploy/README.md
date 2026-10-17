@@ -59,7 +59,7 @@ git clone <this repo> homebase-desktop && cd homebase-desktop/deploy
 ./pin-images.sh                     # base images pinned by digest → deploy/.env
 $EDITOR .env                        # set HUB_HOSTS=192.168.1.20  (the PC's LAN IP, plus a name if you have one)
 cp hub.env.example hub.env && chmod 600 hub.env
-$EDITOR hub.env                     # JWT_SECRET, HOME_LAT/LON, ADSB_CONTACT … (LED_BOARD_URL optional, §5)
+$EDITOR hub.env                     # JWT_SECRET, CARTO_API_KEY, ADSB_CONTACT … (HOME_LAT/LON and LED_BOARD_URL optional, §5)
 cp mirror.env.example mirror.env && chmod 600 mirror.env   # filled in at step 5
 mkdir -p data backups caddy-data tracker-data
 sudo chown -R 10001:10001 data backups caddy-data tracker-data && sudo chmod 700 data backups caddy-data tracker-data
@@ -70,6 +70,17 @@ docker compose logs -f hub
 ```
 
 Check: `curl http://<pc-ip>:3000/health` → `{"ok":true}`.
+
+**Map background (Radar, Closest & farthest):** CARTO's dark map tiles now need
+a free key, or they show "API KEY REQUIRED". Get one at
+<https://carto.com/basemaps/apikey/> (no account; non-commercial use is free up
+to 5 million tiles a month), put it in `hub.env` as `CARTO_API_KEY=…` and
+`docker compose up -d hub`. The hub fetches and caches the tiles, so the key
+stays on the PC. Settings → Status shows whether it's set.
+
+**Home location:** the radar and maps use `HOME_LAT`/`HOME_LON` from `hub.env`
+if set, otherwise the home location saved in **Settings → Plane tracker**
+(picked up within a minute of saving).
 
 HomeBase uses port **8443** for HTTPS (not 443, so it never clashes with another
 web server on the PC). If Caddy fails with `address already in use`, something

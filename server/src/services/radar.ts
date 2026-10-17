@@ -4,6 +4,7 @@ import type { Env } from '../env.js';
 import type { EventBus } from '../events.js';
 import { bearingDeg, cardinal, haversineMiles, milesTo } from '../lib/geo.js';
 import { safeFetchJson } from '../security/safeFetch.js';
+import { HomeLocation } from './home.js';
 
 /**
  * Live aircraft around home from the free community ADS-B feeds.
@@ -67,6 +68,8 @@ export interface RadarAircraft {
 
 export interface RadarSnapshot {
   enabled: boolean;
+  /** Why it's off: RADAR_ENABLED=false, or no home location yet. */
+  off: 'disabled' | 'no_home' | null;
   source: string | null;
   updatedAt: string | null;
   home: { lat: number; lon: number };
@@ -87,12 +90,15 @@ export class RadarService {
     private readonly env: Env,
     private readonly bus: EventBus,
     private readonly log: FastifyBaseLogger,
+    private readonly homeLoc: HomeLocation = new HomeLocation(env),
   ) {
+    const home = homeLoc.get();
     this.snapshotData = {
-      enabled: env.RADAR_ENABLED && !(env.HOME_LAT === 0 && env.HOME_LON === 0),
+      enabled: env.RADAR_ENABLED && home !== null,
+      off: !env.RADAR_ENABLED ? 'disabled' : home ? null : 'no_home',
       source: null,
       updatedAt: null,
-      home: { lat: env.HOME_LAT, lon: env.HOME_LON },
+      home: home ?? { lat: 0, lon: 0 },
       radiusNm: env.RADAR_RADIUS_NM,
       units: env.UNITS,
       aircraft: [],
@@ -110,9 +116,17 @@ export class RadarService {
   }
 
   start(): void {
-    if (!this.snapshotData.enabled) {
-      this.log.info('radar: disabled (RADAR_ENABLED=false or HOME_LAT/HOME_LON not set)');
-    }
+    // Home can arrive later, from the plane tracker's settings.
+    this.homeLoc.onChange(() => {
+      const home = this.homeLoc.get();
+      if (!home) return;
+      this.trails.clear();
+      this.snapshotData = { ...this.snapshotData, enabled: this.env.RADAR_ENABLED, off: this.env.RADAR_ENABLED ? null : 'disabled', home, aircraft: [] };
+      this.version += 1;
+      this.bus.emit('radar', { version: this.version });
+    });
+    if (!this.env.RADAR_ENABLED) this.log.info('radar: off (RADAR_ENABLED=false)');
+    else if (!this.snapshotData.enabled) this.log.info('radar: waiting for a home location (HOME_LAT/HOME_LON, or the plane tracker settings)');
   }
 
   stop(): void {
@@ -144,8 +158,10 @@ export class RadarService {
   }
 
   private async poll(): Promise<void> {
-    const lat = Number(this.env.HOME_LAT.toFixed(4));
-    const lon = Number(this.env.HOME_LON.toFixed(4));
+    const home = this.homeLoc.get();
+    if (!home) return;
+    const lat = Number(home.lat.toFixed(4));
+    const lon = Number(home.lon.toFixed(4));
     let lastErr: unknown = null;
     for (const p of PROVIDERS) {
       try {
@@ -165,6 +181,7 @@ export class RadarService {
   }
 
   private ingest(raw: unknown, source: string): void {
+    const home = this.homeLoc.get() ?? this.snapshotData.home;
     const parsed = responseSchema.parse(raw);
     const list = parsed.ac ?? parsed.aircraft ?? [];
     const now = Date.now();
@@ -187,7 +204,7 @@ export class RadarService {
       while (trail.length > 0 && now - (trail[0]?.t ?? now) > TRAIL_MS) trail.shift();
       this.trails.set(hex, trail);
 
-      const miles = haversineMiles(this.env.HOME_LAT, this.env.HOME_LON, lat, lon);
+      const miles = haversineMiles(home.lat, home.lon, lat, lon);
       aircraft.push({
         hex,
         callsign: (a.flight ?? '').trim().toUpperCase(),
@@ -202,7 +219,7 @@ export class RadarService {
         verticalFpm: a.baro_rate ?? a.geom_rate ?? null,
         squawk: a.squawk ?? '',
         distance: Math.round(milesTo(this.env.UNITS, miles) * 10) / 10,
-        direction: cardinal(bearingDeg(this.env.HOME_LAT, this.env.HOME_LON, lat, lon)),
+        direction: cardinal(bearingDeg(home.lat, home.lon, lat, lon)),
         trail: trail.map((pt) => [Number(pt.lat.toFixed(5)), Number(pt.lon.toFixed(5))] as [number, number]),
       });
     }

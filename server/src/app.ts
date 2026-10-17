@@ -16,6 +16,7 @@ import logoRoutes from './routes/logos.js';
 import mirrorRoutes from './routes/mirror.js';
 import statusRoutes from './routes/status.js';
 import peopleRoutes from './routes/people.js';
+import tileRoutes from './routes/tiles.js';
 import trackerDataRoutes from './routes/trackerData.js';
 import trackerSettingsRoutes from './routes/trackerSettings.js';
 import shareRoutes from './routes/shares.js';
@@ -72,7 +73,6 @@ export async function buildApp(opts: BuildOptions): Promise<FastifyInstance> {
 
   await app.register(cookie);
 
-  const tileHosts = ['https://a.basemaps.cartocdn.com', 'https://b.basemaps.cartocdn.com', 'https://c.basemaps.cartocdn.com', 'https://d.basemaps.cartocdn.com'];
   await app.register(helmet, {
     contentSecurityPolicy: {
       useDefaults: false,
@@ -81,7 +81,8 @@ export async function buildApp(opts: BuildOptions): Promise<FastifyInstance> {
         scriptSrc: ["'self'"],
         styleSrc: ["'self'"],
         // RainViewer: optional rain overlay on the desktop Radar tab.
-        imgSrc: ["'self'", 'data:', ...tileHosts, 'https://*.plnspttrs.net', 'https://tilecache.rainviewer.com'],
+        // Map tiles come through the hub (/api/tiles), so no tile host here.
+        imgSrc: ["'self'", 'data:', 'https://*.plnspttrs.net', 'https://tilecache.rainviewer.com'],
         fontSrc: ["'self'"],
         connectSrc: ["'self'", 'https://api.planespotters.net', 'https://api.rainviewer.com'],
         frameSrc: ["'self'"],
@@ -133,6 +134,7 @@ export async function buildApp(opts: BuildOptions): Promise<FastifyInstance> {
   await app.register(peopleRoutes);
   await app.register(trackerSettingsRoutes);
   await app.register(trackerDataRoutes);
+  await app.register(tileRoutes);
 
   const webDist = opts.webDist ?? path.join(serverRoot, 'web-dist');
   if (fs.existsSync(webDist)) {
@@ -159,12 +161,14 @@ export async function buildApp(opts: BuildOptions): Promise<FastifyInstance> {
   if (opts.startServices) {
     ctx.tracker.start();
     ctx.radar.start();
+    ctx.home.start();
     ctx.calendar.start();
     ctx.backup.start();
   }
   app.addHook('onClose', async () => {
     ctx.tracker.stop();
     ctx.radar.stop();
+    ctx.home.stop();
     ctx.calendar.stop();
     ctx.backup.stop();
     db.close();

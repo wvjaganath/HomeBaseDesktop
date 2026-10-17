@@ -12,9 +12,10 @@
     database: { bytes: number; items: number };
     backup: { enabled: boolean; keep: number; hour: number; count: number; last: BackupInfo | null; error: string | null };
     tracker: { enabled: boolean; reachable: boolean; updatedAt: string | null };
-    radar: { enabled: boolean; source: string | null; updatedAt: string | null; aircraft: number };
+    radar: { enabled: boolean; off?: 'disabled' | 'no_home' | null; source: string | null; updatedAt: string | null; aircraft: number; homeSource?: 'hub.env' | 'tracker' | null };
     calendars: Array<{ name: string; ok: boolean | null; error: string | null; fetchedAt: string | null }>;
     mirror: { enabled: boolean; reachable: boolean };
+    mapTiles?: { key: boolean };
     screens: { count: number; lastSeenAt: string | null };
   }
   type Level = 'ok' | 'warn' | 'bad' | 'off';
@@ -104,10 +105,17 @@
         label: 'Radar',
         level: !s.radar.enabled ? 'off' : s.radar.updatedAt === null || fresh(s.radar.updatedAt, 120) ? 'ok' : 'warn',
         text: !s.radar.enabled
-          ? 'Off (RADAR_ENABLED=false)'
+          ? s.radar.off === 'no_home'
+            ? 'Waiting for a home location (Settings → Plane tracker, or HOME_LAT/HOME_LON in hub.env)'
+            : 'Off (RADAR_ENABLED=false in hub.env)'
           : s.radar.updatedAt === null
             ? 'Idle until someone opens the Radar tab'
             : `${s.radar.aircraft} aircraft from ${s.radar.source ?? '—'} · ${ago(s.radar.updatedAt)}`,
+      },
+      {
+        label: 'Map tiles',
+        level: s.mapTiles?.key === false ? 'warn' : 'ok',
+        text: s.mapTiles?.key === false ? 'No CARTO_API_KEY in hub.env: maps show “API KEY REQUIRED”' : 'CARTO Dark Matter, through the hub',
       },
       {
         label: 'Calendars',
