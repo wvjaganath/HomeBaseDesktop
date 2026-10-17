@@ -48,6 +48,11 @@ ports to the LAN address in `docker-compose.yml` (for example `"192.168.1.20:443
 
 ## 2. Linux PC: run it
 
+Needs Docker with **Compose v2 and buildx** (BuildKit). On Ubuntu/Debian with the
+distribution's Docker: `sudo apt install docker.io docker-buildx docker-compose-v2`
+(with Docker's own apt repo: `docker-ce docker-buildx-plugin docker-compose-plugin`).
+Check: `docker compose version && docker buildx version`.
+
 ```bash
 git clone <this repo> homebase-desktop && cd homebase-desktop/deploy
 ./pin-images.sh                     # base images pinned by digest → deploy/.env

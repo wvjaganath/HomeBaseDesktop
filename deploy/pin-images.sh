@@ -5,15 +5,33 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
+die() { echo "pin-images.sh: $*" >&2; exit 1; }
+
+command -v docker >/dev/null || die "docker is not installed."
+docker info >/dev/null 2>&1 || die "can't talk to Docker. Is it running, and is your user in the 'docker' group? (or run with sudo)"
+# Building the images needs Compose v2 and BuildKit (buildx); check now, not halfway through.
+docker compose version >/dev/null 2>&1 || die "Docker Compose v2 is missing. Ubuntu/Debian: sudo apt install docker-compose-v2   (Docker's own repo: docker-compose-plugin)"
+docker buildx version >/dev/null 2>&1 || die "Docker buildx is missing. Ubuntu/Debian: sudo apt install docker-buildx   (Docker's own repo: docker-buildx-plugin)"
+
+# Prints the multi-platform (index) digest of an image tag, e.g. sha256:ab12…
 resolve() {
-  docker buildx imagetools inspect "$1" --format '{{json .Manifest}}' \
-    | python3 -c 'import json,sys; print(json.load(sys.stdin)["digest"])'
+  local digest
+  digest="$(docker buildx imagetools inspect "$1" --format '{{json .Manifest}}' 2>/dev/null \
+    | python3 -c 'import json,sys; print(json.load(sys.stdin)["digest"])' 2>/dev/null)" || digest=""
+  if [[ ! "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+    # Fallback: pull it and read the registry digest Docker recorded.
+    docker pull -q "$1" >/dev/null || die "couldn't pull $1 (network or registry problem?)"
+    digest="$(docker image inspect "$1" --format '{{range .RepoDigests}}{{println .}}{{end}}' | head -n1 | sed 's/.*@//')"
+  fi
+  [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]] || die "couldn't find a digest for $1"
+  echo "$digest"
 }
 
 NODE_TAG="node:26-bookworm-slim"
 GIT_TAG="alpine/git:latest"
-CADDY_TAG="caddy:2-alpine"   # needs ≥ 2.11.4
+CADDY_TAG="caddy:2-alpine"   # needs ≥ 2.11.4 (checked again at build time)
 
+echo "Resolving $NODE_TAG, $GIT_TAG, $CADDY_TAG …"
 NODE_DIGEST="$(resolve "$NODE_TAG")"
 GIT_DIGEST="$(resolve "$GIT_TAG")"
 CADDY_DIGEST="$(resolve "$CADDY_TAG")"
