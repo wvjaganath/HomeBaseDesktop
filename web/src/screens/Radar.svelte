@@ -6,7 +6,7 @@
   import Icon from '../components/Icon.svelte';
   import Logo from '../components/Logo.svelte';
   import { api } from '../lib/api';
-  import { DELAY_COLORS, distUnit, fmtInt } from '../lib/format';
+  import { DELAY_COLORS, distUnit, fmtInt, tileUrl } from '../lib/format';
   import { hub } from '../lib/hub.svelte';
   import { altitudeColor, PlaneLayer } from '../lib/planeLayer';
   import type { RadarAircraft } from '../lib/types';
@@ -28,6 +28,8 @@
   let follow = $state(true);
   let details = $state<Details | null>(null);
   let rainLayer = $state.raw<L.TileLayer | null>(null);
+  let baseTiles = $state.raw<L.TileLayer | null>(null);
+  let baseUrl = '';
   let rainTime = $state<number | null>(null);
   let rainError = $state(false);
   let showRain = $state(readRainPref());
@@ -73,7 +75,8 @@
     map = L.map(mapEl, { zoomControl: false, attributionControl: true, preferCanvas: true }).setView([start.lat, start.lon], home ? 10 : 6);
     map.attributionControl.setPrefix(false);
     // Tiles come through the hub, which adds the CARTO key (Settings → Hub).
-    L.tileLayer('/api/tiles/{z}/{x}/{y}{r}.png', {
+    baseUrl = tileUrl(hub.config?.mapTilesVersion);
+    baseTiles = L.tileLayer(baseUrl, {
       maxZoom: 14,
       minZoom: 6,
       attribution: '© OpenStreetMap contributors © CARTO · Aircraft: adsb.lol / adsb.fi',
@@ -110,6 +113,15 @@
     g.addTo(m);
     homeGroup = g;
     m.setView([h.lat, h.lon], 10);
+  });
+
+  // A new map key (Settings → Hub): load fresh tiles, not the browser's old ones.
+  $effect(() => {
+    const url = tileUrl(hub.config?.mapTilesVersion);
+    if (baseTiles && url !== baseUrl) {
+      baseUrl = url;
+      baseTiles.setUrl(url);
+    }
   });
 
   onDestroy(() => {

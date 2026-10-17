@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { CALENDAR_COLORS, calendarSourceInput } from '../services/calendar.js';
 import { openReminders, pinnedNotes } from '../services/lists.js';
 import { CALLSIGN_RE, HEX_RE } from '../services/routeLookup.js';
+import { keyFingerprint } from './tiles.js';
 
 const ymd = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 
@@ -21,6 +22,8 @@ export default async function dashboardRoutes(app: FastifyInstance): Promise<voi
     radarEnabled: radar.snapshot.data.enabled,
     radarOff: radar.snapshot.data.off,
     mapKey: settings.cartoApiKey !== '',
+    // Changes with the key, so browsers fetch fresh tiles (no old watermarks).
+    mapTilesVersion: keyFingerprint(settings.cartoApiKey),
     mirrorEnabled: env.MIRROR_URL !== '',
     calendarColors: CALENDAR_COLORS,
   }));

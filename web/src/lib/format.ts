@@ -126,3 +126,6 @@ export function offsetMiles(home: { lat: number; lon: number }, lat: number, lon
   const x = (lon - home.lon) * 69.17 * Math.cos((home.lat * Math.PI) / 180);
   return { x, y };
 }
+
+/** The hub's map tile URL (Leaflet template); ?v= changes with the CARTO key. */
+export const tileUrl = (version: string | undefined): string => `/api/tiles/{z}/{x}/{y}{r}.png?v=${encodeURIComponent(version ?? 'nokey')}`;

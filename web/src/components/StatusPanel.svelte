@@ -15,7 +15,7 @@
     radar: { enabled: boolean; off?: 'disabled' | 'no_home' | null; source: string | null; updatedAt: string | null; aircraft: number; homeSource?: 'tracker' | 'settings' | null };
     calendars: Array<{ name: string; ok: boolean | null; error: string | null; fetchedAt: string | null }>;
     mirror: { enabled: boolean; reachable: boolean };
-    mapTiles?: { key: boolean };
+    mapTiles?: { key: boolean; last?: { at: string; result: 'ok' | 'watermark' | 'refused' | 'error'; httpStatus: number | null } | null };
     screens: { count: number; lastSeenAt: string | null };
   }
   type Level = 'ok' | 'warn' | 'bad' | 'off';
@@ -114,8 +114,8 @@
       },
       {
         label: 'Map tiles',
-        level: s.mapTiles?.key === false ? 'warn' : 'ok',
-        text: s.mapTiles?.key === false ? 'No CARTO key yet (Settings → Hub → Radar & maps): maps show “API KEY REQUIRED”' : 'CARTO Dark Matter, through the hub',
+        level: mapLevel(s.mapTiles),
+        text: mapText(s.mapTiles),
       },
       {
         label: 'Calendars',
@@ -142,6 +142,23 @@
 
   const ICON: Record<Level, IconName> = { ok: 'check', warn: 'alert', bad: 'close', off: 'minus' };
   const WORD: Record<Level, string> = { ok: 'OK', warn: 'Check', bad: 'Problem', off: 'Off' };
+
+  type Tiles = NonNullable<Status['mapTiles']>;
+  function mapLevel(t: Tiles | undefined): Level {
+    if (!t) return 'off';
+    if (!t.key || t.last?.result === 'watermark' || t.last?.result === 'refused') return t.key ? 'bad' : 'warn';
+    return t.last?.result === 'error' ? 'warn' : 'ok';
+  }
+  function mapText(t: Tiles | undefined): string {
+    if (!t) return '—';
+    if (!t.key) return 'No CARTO key yet (Settings → Hub → Radar & maps): maps show “API KEY REQUIRED”';
+    const r = t.last?.result;
+    if (r === 'watermark') return 'CARTO still answers “API KEY REQUIRED” with the saved key: check it was copied whole, or get a new one';
+    if (r === 'refused') return `CARTO refused the key (HTTP ${t.last?.httpStatus ?? '?'}). If it’s limited to certain websites, remove that limit: the hub fetches tiles itself`;
+    if (r === 'error') return 'Couldn’t reach CARTO just now (no internet?)';
+    if (r === 'ok') return `Working · CARTO Dark Matter through the hub · ${ago(t.last?.at ?? null)}`;
+    return 'Key saved · open the Radar to check it';
+  }
 </script>
 
 <section class="card">

@@ -147,6 +147,8 @@ export interface HubConfig {
   radarOff?: 'disabled' | 'no_home' | null;
   /** A CARTO key is saved (map tiles without the "API KEY REQUIRED" stamp). */
   mapKey?: boolean;
+  /** Changes with the map key, so browsers drop tiles fetched with an old one. */
+  mapTilesVersion?: string;
   homeSource?: 'tracker' | 'settings' | null;
   radarEnabled: boolean;
   mirrorEnabled: boolean;

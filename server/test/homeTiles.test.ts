@@ -7,6 +7,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { loadEnv } from '../src/env.js';
 import { HomeLocation } from '../src/services/home.js';
 import { settingsFromEnv } from '../src/services/hubSettings.js';
+import { keyFingerprint, tileDeps, tileStatus } from '../src/routes/tiles.js';
 import { registerUser, testApp } from './helpers.js';
 
 /** A tracker whose saved settings have a home location. */
@@ -85,8 +86,8 @@ describe('map tiles through the hub', () => {
   it('checks the tile address, needs a signed-in viewer, and serves from its cache', async () => {
     const data = await fs.mkdtemp(path.join(os.tmpdir(), 'hb-tiles-'));
     const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3]);
-    await fs.mkdir(path.join(data, 'cache', 'tiles'), { recursive: true });
-    await fs.writeFile(path.join(data, 'cache', 'tiles', 'k-10-262-380-2x.png'), png);
+    await fs.mkdir(path.join(data, 'cache', 'tiles-v2'), { recursive: true });
+    await fs.writeFile(path.join(data, 'cache', 'tiles-v2', `${keyFingerprint('test-key-123456')}-10-262-380-2x.png`), png);
     const app = await testApp({ DATA_DIR: data, CARTO_API_KEY: 'test-key-123456' });
     const auth = { authorization: `Bearer ${(await registerUser(app, 't@example.com')).accessToken}` };
 
@@ -114,5 +115,66 @@ describe('home-network-only fetches (addresses typed into Settings)', () => {
     for (const ip of ['10.0.0.5', '172.16.0.1', '172.31.255.1', '192.168.1.60', '100.64.0.1', 'fd00::1', '::ffff:192.168.1.2']) expect(isLanAddress(ip), ip).toBe(true);
     for (const ip of ['127.0.0.1', '169.254.169.254', '0.0.0.0', '8.8.8.8', '172.32.0.1', '::1', 'fe80::1', '2001:4860::8888']) expect(isLanAddress(ip), ip).toBe(false);
     await expect(safeFetch('http://127.0.0.1:9/x', { allowHosts: ['127.0.0.1'], allowHttp: true, allowPrivate: true, lanOnly: true })).rejects.toThrow(/home-network/);
+  });
+});
+
+describe('CARTO tiles: key, watermark and caching', () => {
+  const PNG = (tag: string) => Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.from(tag)]);
+  it('sends the key to CARTO’s keyed address, never caches the "API KEY REQUIRED" tile, and re-fetches when the key changes', async () => {
+    const seen: string[] = [];
+    let mode: 'watermark' | 'ok' | 'refused' = 'watermark';
+    const real = tileDeps.fetch;
+    tileDeps.fetch = (async (url: string) => {
+      seen.push(url);
+      const u = new URL(url);
+      const status = mode === 'refused' ? 403 : 200;
+      const etag = mode === 'watermark' || !u.searchParams.get('key') ? '"wm-abc"' : '"real-1"';
+      const body = mode === 'refused' ? Buffer.from('no') : PNG(etag);
+      return Object.assign(new Response(null, { status, headers: { etag } }), { bodyBuffer: body, bodyText: body.toString() });
+    });
+    try {
+      const os = await import('node:os');
+      const path = await import('node:path');
+      const fs = await import('node:fs/promises');
+      const data = await fs.mkdtemp(path.join(os.tmpdir(), 'hb-tiles2-'));
+      const app = await testApp({ DATA_DIR: data });
+      const u = await registerUser(app, 'm@example.com');
+      const auth = { authorization: `Bearer ${u.accessToken}` };
+      const tile = () => app.inject({ method: 'GET', url: '/api/tiles/6/16/23.png?v=x', headers: auth });
+
+      // No key: CARTO answers with its watermark; shown but not kept.
+      let r = await tile();
+      expect(r.statusCode).toBe(200);
+      expect(r.headers['cache-control']).toBe('no-store');
+      expect(tileStatus.last?.result).toBe('watermark');
+      expect(seen[0]).toBe('https://basemaps.cartocdn.com/rastertiles/dark_all/6/16/23.png');
+
+      // Save a key: the very next request goes to CARTO with it and is cached.
+      app.ctx.settings.update({ ...app.ctx.settings.values, cartoApiKey: 'my-carto-key-1' }, u.id);
+      const before = (await app.inject({ method: 'GET', url: '/api/config', headers: auth })).json<{ mapTilesVersion: string }>().mapTilesVersion;
+      expect(before).not.toBe('nokey');
+      mode = 'ok';
+      seen.length = 0;
+      r = await tile();
+      expect(r.headers['cache-control']).toBe('private, max-age=86400');
+      expect(r.rawPayload.toString()).toContain('real-1');
+      expect(seen).toEqual(['https://basemaps.cartocdn.com/rastertiles/dark_all/6/16/23.png?key=my-carto-key-1']);
+      expect(tileStatus.last?.result).toBe('ok');
+      seen.length = 0;
+      await tile();
+      expect(seen).toEqual([]); // from the hub's cache
+
+      // A refused key is reported, not hidden.
+      app.ctx.settings.update({ ...app.ctx.settings.values, cartoApiKey: 'other-key-22' }, u.id);
+      mode = 'refused';
+      r = await tile();
+      expect(r.statusCode).toBe(502);
+      expect(tileStatus.last).toMatchObject({ result: 'refused', httpStatus: 403 });
+      expect((await app.inject({ method: 'GET', url: '/api/status', headers: auth })).json()).toMatchObject({ mapTiles: { key: true, last: { result: 'refused' } } });
+      await app.close();
+      await fs.rm(data, { recursive: true, force: true });
+    } finally {
+      tileDeps.fetch = real;
+    }
   });
 });
