@@ -1,17 +1,20 @@
-# HomeBase on the Linux PC: hub + HTTPS front door + MagicMirror².
+# HomeBase on the Linux PC: hub + HTTPS front door + plane tracker + MagicMirror².
 #
 #   cd deploy
 #   ./pin-images.sh                                     # base images by digest → .env
 #   cp hub.env.example hub.env && chmod 600 hub.env     # then fill it in
 #   cp mirror.env.example mirror.env && chmod 600 mirror.env
-#   mkdir -p data backups caddy-data && sudo chown -R 10001:10001 data backups caddy-data \
-#     && sudo chmod 700 data backups caddy-data
+#   mkdir -p data backups caddy-data tracker-data \
+#     && sudo chown -R 10001:10001 data backups caddy-data tracker-data \
+#     && sudo chmod 700 data backups caddy-data tracker-data
 #   docker compose build && docker compose up -d
 #
 # Ports (bind them to the PC's LAN address if it has more than one network):
 #   8443  https://<pc>:8443 every browser, the Pi screen included (Caddy)
 #   8080  http://<pc>:8080  redirects to https (old bookmarks and screen links)
 #   3000  http://<pc>:3000  the hub directly, for the HomeBase iPhone app
+#   8081  http://<pc>:8081  read-only flight/weather feed for the LED board
+#                           (the board runs the tracker as a slave of this PC)
 #
 # Security posture (README §7.5): non-root, read-only root filesystem, all
 # capabilities dropped, no privilege escalation, resource limits. MagicMirror
@@ -39,6 +42,12 @@ networks:
     ipam:
       config:
         - subnet: 172.30.88.0/24
+  # hub/Caddy ↔ the plane tracker. Its own web app (settings, Wi-Fi, restart)
+  # is reachable only here; the LED board gets read-only paths via Caddy :8081.
+  tracker:
+    ipam:
+      config:
+        - subnet: 172.30.89.0/24
 
 services:
   hub:
@@ -58,6 +67,9 @@ services:
       # Only Caddy (below) may set X-Forwarded-* headers.
       TRUST_PROXY: 172.30.87.10
       MIRROR_URL: http://magicmirror:8080
+      # The bundled plane tracker (below). Overrides TRACKER_URL in hub.env.
+      TRACKER_URL: http://tracker:8080
+      TRACKER_BUNDLED: "true"
     volumes:
       - ./data:/data
       - ./backups:/backups
@@ -68,6 +80,8 @@ services:
         ipv4_address: 172.30.87.20
       mirror:
         ipv4_address: 172.30.88.20
+      tracker:
+        ipv4_address: 172.30.89.20
     ports:
       # The iPhones' saved address. Browsers should use https:// (Caddy).
       - "3000:3000"
@@ -102,14 +116,45 @@ services:
     networks:
       edge:
         ipv4_address: 172.30.87.10
+      tracker:
+        ipv4_address: 172.30.89.10
     ports:
       # 8443 by default so HomeBase never fights another web server for 443.
       # Change HTTPS_PORT / HTTP_PORT in deploy/.env if they're taken too.
       - "${HTTPS_PORT:-8443}:8443"
       - "${HTTP_PORT:-8080}:8080"
+      # Read-only feed for the LED board (see the tracker service).
+      - "${TRACKER_FEED_PORT:-8081}:8081"
     mem_limit: 128m
     cpus: 0.5
     pids_limit: 64
+
+  # The plane tracker (its-a-plane-python, bundled in ../tracker), headless, as
+  # the house's master tracker: flights, routes (your API keys), weather,
+  # alerts, ISS, tracked flight and stats. HomeBase is its UI; its state is
+  # in ./tracker-data. See tracker/UPSTREAM.md.
+  tracker:
+    <<: *hardening
+    build:
+      context: ..
+      dockerfile: deploy/tracker.Dockerfile
+      args:
+        PYTHON_IMAGE: ${PYTHON_IMAGE:-python:3.14-slim}
+    image: homebase-tracker:local
+    environment:
+      TZ: ${TZ:-America/Chicago}
+    volumes:
+      - ./tracker-data:/data
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    # Outbound internet for adsb.lol/OpenSky, AirLabs/FlightAware/FR24,
+    # Tomorrow.io, NWS, FAA and CelesTrak. No published port.
+    networks:
+      tracker:
+        ipv4_address: 172.30.89.40
+    mem_limit: 384m
+    cpus: 0.75
+    pids_limit: 128
 
   magicmirror:
     <<: *hardening

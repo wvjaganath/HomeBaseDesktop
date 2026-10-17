@@ -25,3 +25,4 @@ deploy/hub.env
 deploy/mirror.env
 deploy/data/
 deploy/caddy-data/
+deploy/tracker-data/

@@ -52,3 +52,21 @@
 http://:8080 {
 	redir https://{host}:{$HTTPS_PORT:8443}{uri} 308
 }
+
+# Read-only feed for the LED board, which runs the tracker as a slave of this
+# PC (Master Tracker Hostname = <pc-ip>:8081 on the board). Only the paths a
+# slave reads, only GET, only from private (LAN) addresses. The tracker's
+# settings, restart and Wi-Fi endpoints are never reachable here.
+http://:8081 {
+	@feed {
+		method GET HEAD
+		remote_ip private_ranges
+		path /overhead/json /tracked/json/live /weather/json /clock/json /iss/json /airport-status/json
+	}
+	handle @feed {
+		reverse_proxy {$TRACKER_UPSTREAM:tracker:8080}
+	}
+	handle {
+		respond "Not found" 404
+	}
+}
