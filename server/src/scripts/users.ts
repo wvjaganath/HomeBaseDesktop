@@ -99,6 +99,7 @@ async function main(): Promise<void> {
   try {
     if (cmd === 'list' && args.length === 0) {
       const users = listUsers(db);
+      console.log(`Database: ${env.dbPath}`);
       if (users.length === 0) console.log('No accounts yet.');
       for (const u of users) {
         console.log(`${u.email.padEnd(32)} ${u.displayName.padEnd(20)} created ${u.createdAt.slice(0, 10)}  ${u.activeSessions} signed-in session(s)`);
@@ -125,6 +126,12 @@ async function main(): Promise<void> {
   } catch (err) {
     if (err instanceof UserAdminError) {
       console.error(err.message);
+      if (err.message.startsWith('No account')) {
+        // Make "wrong database" or "different spelling" obvious.
+        const emails = listUsers(db).map((u) => u.email);
+        console.error(`Database: ${env.dbPath}`);
+        console.error(emails.length ? `Accounts in it: ${emails.join(', ')}` : 'It has no accounts at all (is this the database you copied over?).');
+      }
       process.exitCode = 1;
     } else {
       throw err;
