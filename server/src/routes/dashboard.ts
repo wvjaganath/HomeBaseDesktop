@@ -3,7 +3,10 @@ import { z } from 'zod';
 import { CALENDAR_COLORS, calendarSourceInput } from '../services/calendar.js';
 import { openReminders, pinnedNotes } from '../services/lists.js';
 import { CALLSIGN_RE, HEX_RE } from '../services/routeLookup.js';
-import { keyFingerprint } from './tiles.js';
+
+/** CARTO Dark Matter raster tiles (Leaflet template), keyed when a key is saved. */
+export const cartoTileUrl = (key: string): string =>
+  `https://basemaps.cartocdn.com/rastertiles/dark_all/{z}/{x}/{y}{r}.png${key ? `?key=${encodeURIComponent(key)}` : ''}`;
 
 const ymd = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 
@@ -22,8 +25,9 @@ export default async function dashboardRoutes(app: FastifyInstance): Promise<voi
     radarEnabled: radar.snapshot.data.enabled,
     radarOff: radar.snapshot.data.off,
     mapKey: settings.cartoApiKey !== '',
-    // Changes with the key, so browsers fetch fresh tiles (no old watermarks).
-    mapTilesVersion: keyFingerprint(settings.cartoApiKey),
+    // CARTO's terms: tiles go straight from CARTO to each screen (no relaying or
+    // caching on the hub), so the screens get the tile address with the key.
+    mapTileUrl: cartoTileUrl(settings.cartoApiKey),
     mirrorEnabled: env.MIRROR_URL !== '',
     calendarColors: CALENDAR_COLORS,
   }));

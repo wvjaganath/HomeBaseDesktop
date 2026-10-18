@@ -90,8 +90,34 @@ lines you can then delete. `mirror.env` isn't used any more.
 2. **Settings → Hub → Radar & maps:** paste a free CARTO key from
    <https://carto.com/basemaps/apikey/> (no account; non-commercial use is free
    up to 5 million tiles a month). Without it the map background says
-   "API KEY REQUIRED". The hub fetches and caches the tiles, so the key stays
-   on the PC; it's stored encrypted and never shown again.
+   "API KEY REQUIRED". It's stored encrypted on the hub. CARTO's terms require
+   tiles to load straight from CARTO (no relaying or caching on a server), so
+   each screen uses the key in its tile requests. If you limit the key to
+   certain websites in CARTO's dashboard, add the address you open HomeBase on.
+
+### Outside services and their terms
+
+Checked 2026-10-18 against each service's published terms. All of this is
+personal, non-commercial use on a home network.
+
+| Service | Used by | Terms that apply | How HomeBase keeps to them |
+|---|---|---|---|
+| **Flightradar24 API** (your key) | tracker: route lookups, Track a flight, route search | Paid plan; personal or commercial use allowed; no reselling or redistributing raw data; data may be cached only "for a limited time as documented per endpoint" and no "persistent local copies" (T&C 2.4, 6.3.1) | Official API with your key, ~1 call per new flight (routes are remembered 1 hour, in memory). The tracker's own logs (flight counts, closest/farthest records, API log) keep route codes on disk: set **Flight log retention** in Plane tracker → Stats logging if you want them limited. |
+| **adsb.lol** | tracker every 30 s; Radar every 5 s while open | Free, no key yet; data under ODbL (credit it); dynamic rate limits | Credited on every map/list that shows its data. |
+| **adsb.fi** | Radar backup only | Personal, non-commercial only; max 1 request/second; cite adsb.fi with a link | Only when adsb.lol fails, ≤ 1 per 5 s; linked credit on the Radar map. |
+| **OpenSky** (anonymous) | tracker backup only, when adsb.lol fails | 400 credits/day without an account; non-commercial | Pauses for as long as OpenSky asks once the allowance is used (patch). |
+| **CARTO** basemaps (your key) | maps in the browser | Free non-commercial ≤ 5M tiles/month; **no server-side proxying or caching**; browser cache ≤ 30 days; prominent OpenStreetMap + CARTO credit | Tiles load straight from CARTO in the browser; readable credit on every map. |
+| **Planespotters.net** | aircraft photos in the browser | Photographer credit next to the photo, link to the photo page, images loaded from their URLs (never stored or proxied), browser sends Origin/Referer | All of these; only the JSON answer is kept in the page's memory. |
+| **adsbdb.com** | Radar plane details | Free public API (no published limits) | One lookup per selected plane, cached by the hub. |
+| **weather.gov** | tracker weather alerts | Open data, any use; User-Agent required | Sends one; every 10 min. Turn off in Plane tracker → Flights. |
+| **CelesTrak** | tracker ISS passes | Download each data set at most once per update (GP: every 2 h); stop on errors | Once every 12 h; backs off on errors. Turn off in Plane tracker → Flights. |
+| **FAA NAS status** | tracker airport delays | US government public data | Every 5 min, only with an airport watch list. |
+| **Tomorrow.io** (needs a key) | tracker temperature/forecast | Free plan 25 calls/hour, 500/day | ~7/hour when a key is set; **no calls without a key** (patch). |
+| **OpenStreetMap Nominatim** | tracker place names for the LED panel | ≤ 1 request/s, identify the app, cache, credit OSM | Not used on the server (nothing displays it) (patch). |
+| **Open-Meteo** | MagicMirror weather | Free non-commercial < 10,000 calls/day; CC BY 4.0 credit | ~150 calls/day; "Weather data by Open-Meteo.com" shown under the forecast. |
+| **RainViewer** | optional rain layer (desktop Radar) | Free for personal use; max zoom 7; 100 requests/min per IP | Zoom capped at 7; credited on the map; off unless you turn it on. |
+| **GitHub** | airline logos (pinned commit), tracker airport/airline lists | Public repositories | Downloaded when needed only. |
+
 
 HomeBase uses port **8443** for HTTPS (not 443, so it never clashes with another
 web server on the PC). If Caddy fails with `address already in use`, something

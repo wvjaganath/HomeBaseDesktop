@@ -393,6 +393,10 @@ def _ensure_nominatim(lat, lon):
 # ---------------------------------------------------------------------------
 
 def get_nearest_landmark(latitude, longitude, **kwargs):
+    # HomeBase patch: on the server nothing shows the place name (there's no
+    # LED panel), so don't query OpenStreetMap's Nominatim for it.
+    if os.environ.get("HOMEBASE_HEADLESS") == "1":
+        return None
     park_name, _ = _nearest_park(latitude, longitude)
     if park_name:
         return {"name": park_name}

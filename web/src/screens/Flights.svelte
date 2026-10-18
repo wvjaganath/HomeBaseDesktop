@@ -71,6 +71,7 @@
             </li>
           {/each}
         </ul>
+        <p class="credit">Aircraft data: <a href="https://adsb.lol" target="_blank" rel="noopener">adsb.lol</a> / <a href="https://adsb.fi" target="_blank" rel="noopener">adsb.fi</a></p>
       {/if}
     </section>
   {/if}
@@ -81,6 +82,11 @@
 </div>
 
 <style>
+  .credit {
+    margin: 8px 0 0;
+    font-size: 13px;
+    color: var(--muted);
+  }
   .corner {
     position: fixed;
     right: 28px;

@@ -52,6 +52,7 @@
             {:else}
               <span class="big">No plane in your box</span>
               <span class="muted">{radarCount} aircraft within {units === 'metric' ? 40 : 25} {distUnit(units)}</span>
+              <span class="credit">Aircraft: adsb.lol / adsb.fi</span>
             {/if}
           </div>
         </section>
@@ -67,6 +68,10 @@
 </div>
 
 <style>
+  .credit {
+    font-size: 12px;
+    color: var(--muted);
+  }
   .home {
     height: 100%;
     padding: 36px 52px 30px;

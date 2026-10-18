@@ -225,6 +225,10 @@ else:
     TOMORROW_API_URL = "https://api.tomorrow.io/v4"
 
     def grab_temperature_and_humidity():
+        # HomeBase patch: no key, no request (it would send the location to
+        # Tomorrow.io only to be refused).
+        if not TOMORROW_API_KEY:
+            return None, None, None
         try:
             s = get_session()
             request = s.get(
@@ -275,6 +279,8 @@ else:
 
 
     def grab_forecast(tag="unknown"):
+        if not TOMORROW_API_KEY:  # HomeBase patch: no key, no request
+            return []
         dt = datetime.now() - timedelta(days=1)
 
         try:
@@ -348,6 +354,8 @@ else:
 
     def grab_hourly_forecast(tag="unknown"):
         """Fetch ~36h of hourly intervals for time-of-day forecast mode."""
+        if not TOMORROW_API_KEY:  # HomeBase patch: no key, no request
+            return []
         dt = datetime.now()
         try:
             s = get_session()

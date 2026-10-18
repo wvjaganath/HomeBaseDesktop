@@ -127,5 +127,11 @@ export function offsetMiles(home: { lat: number; lon: number }, lat: number, lon
   return { x, y };
 }
 
-/** The hub's map tile URL (Leaflet template); ?v= changes with the CARTO key. */
-export const tileUrl = (version: string | undefined): string => `/api/tiles/{z}/{x}/{y}{r}.png?v=${encodeURIComponent(version ?? 'nokey')}`;
+/**
+ * CARTO Dark Matter tiles (Leaflet template). Loaded by the browser straight
+ * from CARTO, as CARTO's terms require; the hub supplies the keyed address.
+ */
+const CARTO_TILES = 'https://basemaps.cartocdn.com/rastertiles/dark_all/{z}/{x}/{y}{r}.png';
+export const tileUrl = (fromHub: string | undefined): string => (fromHub?.startsWith(`${CARTO_TILES}`) ? fromHub : CARTO_TILES);
+/** CARTO's terms ask for prominent credit to OpenStreetMap and CARTO. */
+export const MAP_CREDIT = '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors © <a href="https://carto.com/attributions" target="_blank" rel="noopener">CARTO</a>';

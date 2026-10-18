@@ -1,7 +1,6 @@
 import fs from 'node:fs';
 import type { FastifyInstance } from 'fastify';
 import { safeFetch } from '../security/safeFetch.js';
-import { tileStatus } from './tiles.js';
 
 const pkg = JSON.parse(fs.readFileSync(new URL('../../package.json', import.meta.url), 'utf8')) as { version: string };
 const startedAt = new Date();
@@ -71,7 +70,7 @@ export default async function statusRoutes(app: FastifyInstance): Promise<void> 
       radar: { enabled: r.enabled, off: r.off, source: r.source, updatedAt: r.updatedAt, aircraft: r.aircraft.length, homeSource: app.ctx.home.source },
       calendars: sources.map((s) => ({ name: s.name, ok: s.ok, error: s.error, fetchedAt: s.fetchedAt })),
       mirror: { enabled: env.MIRROR_URL !== '', reachable: await mirrorReachable() },
-      mapTiles: { key: app.ctx.settings.cartoApiKey !== '', last: tileStatus.last },
+      mapTiles: { key: app.ctx.settings.cartoApiKey !== '' },
       // hub.env lines the hub doesn't read any more (they're in Settings now).
       config: { leftoverEnvKeys: app.ctx.settings.leftoverEnvKeys, timezone: env.timezone },
       screens: { count: screens.n, lastSeenAt: screens.last },

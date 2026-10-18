@@ -13,3 +13,13 @@ body {
   border-bottom-color: #1d252f;
   letter-spacing: 2px;
 }
+
+/* Open-Meteo's licence (CC BY 4.0) asks for visible credit for its weather
+   data, shown under the last weather module. */
+.module.weather + .module.weather .module-content::after {
+  content: "Weather data by Open-Meteo.com";
+  display: block;
+  margin-top: 6px;
+  font-size: 14px;
+  color: var(--color-text-dimmed);
+}

@@ -20,6 +20,9 @@ Kept to a minimum so updating stays easy (each change is marked `HomeBase` in th
 | `setup/email_alerts.py` | `_send()` does nothing | Upstream emails from the author's shared Gmail account with its password in the code. The account and password are removed; email alerts are off. |
 | `web/upload_helper.py` | Returns an empty link | Upstream uploads the closest/farthest maps (which show your home area) to the author's server. Nothing is uploaded. |
 | `web/apppublic.py` | Adds `GET /homebase/tracked/live` | The tracked flight's live position (the file `overhead.py` already writes each cycle) for HomeBase's Track a flight screen. Read-only, and not part of the LED feed. |
+| `utilities/temperature.py` | No Tomorrow.io request without a key | Upstream sends the location every 10 minutes even with no key, only to be refused. |
+| `utilities/landmarks.py` | No place-name lookups when `HOMEBASE_HEADLESS=1` | On the server nothing displays them, so there's no reason to query OpenStreetMap's Nominatim. |
+| `utilities/opensky.py` | Pauses OpenSky after HTTP 429 | The anonymous backup (used only when adsb.lol fails) would otherwise retry every 30 s after the daily allowance is used up. |
 | `logos/` | Only `default.png` | The server draws nothing; the LED board has its own logo set. |
 | `fonts/` | Not copied | The headless stand-in doesn't read fonts. |
 
@@ -41,7 +44,7 @@ Everything else is byte-for-byte upstream. HomeBase's own pieces live outside
 ```bash
 git clone https://github.com/c0wsaysmoo/plane-tracker-rgb-pi /tmp/pt && cd /tmp/pt && git log -1
 # copy its-a-plane-python over tracker/app (skip __pycache__, fonts, config/*.json),
-# then re-apply the three patches above and check:
+# then re-apply the patches above and check:
 grep -rn "gmail\|ddnsgeek\|smtplib.SMTP" tracker/app   # must print nothing
 ```
 

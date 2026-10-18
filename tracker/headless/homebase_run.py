@@ -135,6 +135,8 @@ def build_overlay(rel: Path = Path(".")) -> None:
 
 
 def main() -> int:
+    # No LED panel here: lets the copy skip work that only feeds the panel.
+    os.environ.setdefault("HOMEBASE_HEADLESS", "1")
     DATA.mkdir(parents=True, exist_ok=True)
     build_overlay()
     flag = DATA / ".restart_requested"

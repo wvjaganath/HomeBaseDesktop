@@ -43,6 +43,7 @@ TOKEN_URL = (
     "/protocol/openid-connect/token"
 )
 BASE_URL = "https://opensky-network.org"
+_OPENSKY_PAUSED_UNTIL = 0.0  # HomeBase patch: see _fetch_opensky_zone
 
 
 def _parse_state(s):
@@ -146,6 +147,11 @@ class OpenSkyClient:
         Returns [] if request succeeded but zone is genuinely empty.
         """
         import time as _time
+        global _OPENSKY_PAUSED_UNTIL
+        # HomeBase patch: once OpenSky says the daily allowance is used up
+        # (HTTP 429), wait as long as it asks instead of retrying every cycle.
+        if _time.time() < _OPENSKY_PAUSED_UNTIL:
+            return None
         params = {
             "lamin": lat_min,
             "lamax": lat_max,
@@ -159,6 +165,14 @@ class OpenSkyClient:
                 params=params,
                 timeout=15,
             )
+            if resp.status_code == 429:
+                try:
+                    wait = float(resp.headers.get("X-Rate-Limit-Retry-After-Seconds", "3600"))
+                except ValueError:
+                    wait = 3600.0
+                _OPENSKY_PAUSED_UNTIL = _time.time() + max(300.0, min(wait, 86400.0))
+                print(f"[OpenSky] Allowance used up; pausing OpenSky for {int(wait)} s")
+                return None
             resp.raise_for_status()
             data = resp.json()
         except Exception as e:

@@ -18,7 +18,6 @@ import statusRoutes from './routes/status.js';
 import peopleRoutes from './routes/people.js';
 import hubSettingsRoutes from './routes/hubSettings.js';
 import mirrorBootstrapRoutes from './routes/mirrorBootstrap.js';
-import tileRoutes from './routes/tiles.js';
 import trackerDataRoutes from './routes/trackerData.js';
 import trackerSettingsRoutes from './routes/trackerSettings.js';
 import shareRoutes from './routes/shares.js';
@@ -67,6 +66,11 @@ export async function buildApp(opts: BuildOptions): Promise<FastifyInstance> {
   const db = openDb(env.dbPath);
   const ctx: AppContext = createContext(env, db, app.log);
   app.decorate('ctx', ctx);
+  // An earlier version relayed and stored CARTO tiles on the hub, which CARTO's
+  // terms (9.c) don't allow: remove anything it stored.
+  for (const dir of ['tiles', 'tiles-v2']) {
+    void fs.promises.rm(path.join(env.DATA_DIR, 'cache', dir), { recursive: true, force: true }).catch(() => undefined);
+  }
   // Settings saved in the browser apply straight away.
   if (!env.isTest) app.log.level = ctx.settings.values.logLevel;
   ctx.settings.onChange((next, prev) => {
@@ -93,8 +97,8 @@ export async function buildApp(opts: BuildOptions): Promise<FastifyInstance> {
         scriptSrc: ["'self'"],
         styleSrc: ["'self'"],
         // RainViewer: optional rain overlay on the desktop Radar tab.
-        // Map tiles come through the hub (/api/tiles), so no tile host here.
-        imgSrc: ["'self'", 'data:', 'https://*.plnspttrs.net', 'https://tilecache.rainviewer.com'],
+        // Map tiles load straight from CARTO (their terms forbid relaying them).
+        imgSrc: ["'self'", 'data:', 'https://basemaps.cartocdn.com', 'https://*.plnspttrs.net', 'https://tilecache.rainviewer.com'],
         fontSrc: ["'self'"],
         connectSrc: ["'self'", 'https://api.planespotters.net', 'https://api.rainviewer.com'],
         frameSrc: ["'self'"],
@@ -146,7 +150,6 @@ export async function buildApp(opts: BuildOptions): Promise<FastifyInstance> {
   await app.register(peopleRoutes);
   await app.register(trackerSettingsRoutes);
   await app.register(trackerDataRoutes);
-  await app.register(tileRoutes);
   await app.register(hubSettingsRoutes);
   await app.register(mirrorBootstrapRoutes);
 

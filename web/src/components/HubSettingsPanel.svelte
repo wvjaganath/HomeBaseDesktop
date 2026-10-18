@@ -170,7 +170,7 @@
             <div class="keyrow"><span class="muted">Will be removed when you save.</span><button type="button" class="btn small" onclick={() => (removeKey = false)}>Undo</button></div>
           {/if}
           <input type="password" autocomplete="off" spellcheck="false" maxlength="200" placeholder={view.settings.cartoApiKeySet ? 'Paste a new key to replace it' : 'Paste your key'} bind:value={newKey} disabled={removeKey} />
-          <small>Free, no account: <a href="https://carto.com/basemaps/apikey/" target="_blank" rel="noopener noreferrer">carto.com/basemaps/apikey</a>. Without it the map background says “API KEY REQUIRED”. Stored encrypted; never shown again.</small>
+          <small>Free, no account: <a href="https://carto.com/basemaps/apikey/" target="_blank" rel="noopener noreferrer">carto.com/basemaps/apikey</a>. Without it the map background says “API KEY REQUIRED”. Stored encrypted on the hub. CARTO’s terms require the maps to load tiles straight from CARTO, so your screens use the key in their tile requests (it’s meant to be used that way). If you limit the key to certain websites in CARTO’s dashboard, add the address you open HomeBase on.</small>
         </div>
       </fieldset>
 

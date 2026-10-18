@@ -7,7 +7,7 @@
   import 'leaflet/dist/leaflet.css';
   import L from 'leaflet';
   import { onDestroy, onMount } from 'svelte';
-  import { tileUrl } from '../lib/format';
+  import { MAP_CREDIT, tileUrl } from '../lib/format';
   import { hub } from '../lib/hub.svelte';
   import type { FlightRecord } from '../lib/types';
 
@@ -103,11 +103,11 @@
     if (!el) return;
     map = L.map(el, { zoomControl: true, attributionControl: true, preferCanvas: true, worldCopyJump: true }).setView([home.lat, home.lon], 9);
     map.attributionControl.setPrefix(false);
-    // Tiles come through the hub, which adds the CARTO key (Settings → Hub).
-    L.tileLayer(tileUrl(hub.config?.mapTilesVersion), {
+    // Tiles load straight from CARTO with the key from Settings → Hub (CARTO's terms).
+    L.tileLayer(tileUrl(hub.config?.mapTileUrl), {
       maxZoom: 14,
       minZoom: 1,
-      attribution: '© OpenStreetMap contributors © CARTO',
+      attribution: MAP_CREDIT,
     }).addTo(map);
     draw();
   });

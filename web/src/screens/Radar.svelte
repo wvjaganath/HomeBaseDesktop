@@ -6,7 +6,7 @@
   import Icon from '../components/Icon.svelte';
   import Logo from '../components/Logo.svelte';
   import { api } from '../lib/api';
-  import { DELAY_COLORS, distUnit, fmtInt, tileUrl } from '../lib/format';
+  import { DELAY_COLORS, distUnit, fmtInt, MAP_CREDIT, tileUrl } from '../lib/format';
   import { hub } from '../lib/hub.svelte';
   import { altitudeColor, PlaneLayer } from '../lib/planeLayer';
   import type { RadarAircraft } from '../lib/types';
@@ -74,12 +74,13 @@
     const start = home ?? { lat: 0, lon: 0 };
     map = L.map(mapEl, { zoomControl: false, attributionControl: true, preferCanvas: true }).setView([start.lat, start.lon], home ? 10 : 6);
     map.attributionControl.setPrefix(false);
-    // Tiles come through the hub, which adds the CARTO key (Settings → Hub).
-    baseUrl = tileUrl(hub.config?.mapTilesVersion);
+    // Tiles load straight from CARTO with the key from Settings → Hub (CARTO's terms).
+    baseUrl = tileUrl(hub.config?.mapTileUrl);
     baseTiles = L.tileLayer(baseUrl, {
       maxZoom: 14,
       minZoom: 6,
-      attribution: '© OpenStreetMap contributors © CARTO · Aircraft: adsb.lol / adsb.fi',
+      // adsb.fi's terms ask for a link to their site; adsb.lol's data is ODbL.
+      attribution: `${MAP_CREDIT} · Aircraft: <a href="https://adsb.lol" target="_blank" rel="noopener">adsb.lol</a> / <a href="https://adsb.fi" target="_blank" rel="noopener">adsb.fi</a>`,
     }).addTo(map);
     const planes = new PlaneLayer();
     planes.addTo(map);
@@ -117,7 +118,7 @@
 
   // A new map key (Settings → Hub): load fresh tiles, not the browser's old ones.
   $effect(() => {
-    const url = tileUrl(hub.config?.mapTilesVersion);
+    const url = tileUrl(hub.config?.mapTileUrl);
     if (baseTiles && url !== baseUrl) {
       baseUrl = url;
       baseTiles.setUrl(url);
@@ -540,13 +541,5 @@
   :global(.leaflet-container) {
     font-family: var(--font);
     background: #0d1218;
-  }
-  :global(.leaflet-control-attribution) {
-    background: rgba(10, 13, 18, 0.8) !important;
-    color: var(--faint) !important;
-    font-size: 12px;
-  }
-  :global(.leaflet-control-attribution a) {
-    color: var(--muted) !important;
   }
 </style>
