@@ -2,7 +2,6 @@
   import AlertsBar from '../components/AlertsBar.svelte';
   import FlightHero from '../components/FlightHero.svelte';
   import Icon from '../components/Icon.svelte';
-  import MiniRadar from '../components/MiniRadar.svelte';
   import MonthCalendar from '../components/MonthCalendar.svelte';
   import NotesCard from '../components/NotesCard.svelte';
   import RemindersCard from '../components/RemindersCard.svelte';
@@ -43,7 +42,12 @@
       <MonthCalendar maxPerDay={3} />
       <div class="right">
         <section class="card sky">
-          <MiniRadar size={220} radiusMi={25} />
+          <!-- The live map pulls in Leaflet, so it loads after the rest of Home. -->
+          {#await import('../components/MiniRadar.svelte')}
+            <div class="radar-wait" style:width="220px" style:height="220px"></div>
+          {:then { default: MiniRadar }}
+            <MiniRadar size={220} radiusMi={25} />
+          {/await}
           <div class="skytext">
             <span class="label accent"><Icon name="plane" size={20} />Sky</span>
             {#if hub.config?.trackerEnabled === false && hub.config?.radarEnabled === false}
@@ -52,8 +56,8 @@
             {:else}
               <span class="big">No plane in your box</span>
               <span class="muted">{radarCount} aircraft within {units === 'metric' ? 40 : 25} {distUnit(units)}</span>
-              <span class="credit">Aircraft: adsb.lol / adsb.fi</span>
             {/if}
+            <span class="credit">Map © OpenStreetMap contributors © CARTO · Aircraft: adsb.lol / adsb.fi</span>
           </div>
         </section>
         <div class="lists">
@@ -68,6 +72,12 @@
 </div>
 
 <style>
+  .radar-wait {
+    flex: none;
+    border-radius: 50%;
+    border: 2px solid #1f2a36;
+    background: #0d1218;
+  }
   .credit {
     font-size: 12px;
     color: var(--muted);

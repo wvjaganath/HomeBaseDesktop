@@ -1,9 +1,6 @@
 import L from 'leaflet';
+import { SHAPE_SIZE, shapeFor, shapePath, type ShapeClass } from './aircraftShapes';
 import type { RadarAircraft } from './types';
-
-const PLANE = new Path2D(
-  'M12 2.5c.8 0 1.3.7 1.3 1.6v5.2l7.2 4.3v1.9l-7.2-2.2v4.4l2.2 1.7v1.5L12 20l-3.5 1v-1.5l2.2-1.7v-4.4l-7.2 2.2v-1.9l7.2-4.3V4.1c0-.9.5-1.6 1.3-1.6z',
-);
 
 export function altitudeColor(ft: number | null): string {
   if (ft === null) return '#6b7787';
@@ -26,6 +23,17 @@ export class PlaneLayer extends L.Layer {
   private hits: Array<{ hex: string; x: number; y: number }> = [];
   private dataTime = 0;
   private extrapolate = false;
+  /** Icon size multiplier (the small Home map draws them a bit smaller). */
+  private iconScale = 1;
+  private labels = true;
+  private shapes = new Map<string, ShapeClass>();
+  private canvasSize = { w: 0, h: 0, dpr: 0 };
+
+  constructor(opts: { iconScale?: number; labels?: boolean } = {}) {
+    super();
+    this.iconScale = opts.iconScale ?? 1;
+    this.labels = opts.labels ?? true;
+  }
 
   override onAdd(map: L.Map): this {
     this.canvas = L.DomUtil.create('canvas', 'plane-layer leaflet-zoom-hide');
@@ -53,6 +61,12 @@ export class PlaneLayer extends L.Layer {
 
   setData(data: RadarAircraft[], highlightCallsigns: Set<string>, selectedHex: string | null, dataTime = Date.now()): void {
     this.data = data;
+    // Silhouette per aircraft, worked out once per hex/type/category.
+    for (const a of data) {
+      const k = `${a.hex}|${a.type}|${a.category}`;
+      if (!this.shapes.has(k)) this.shapes.set(k, shapeFor(a.type, a.category));
+    }
+    if (this.shapes.size > 2000) this.shapes.clear();
     this.dataTime = dataTime;
     this.highlight = highlightCallsigns;
     this.selected = selectedHex;
@@ -90,10 +104,14 @@ export class PlaneLayer extends L.Layer {
     const size = map.getSize();
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
     L.DomUtil.setPosition(canvas, map.containerPointToLayerPoint([0, 0]));
-    canvas.width = size.x * dpr;
-    canvas.height = size.y * dpr;
-    canvas.style.width = `${size.x}px`;
-    canvas.style.height = `${size.y}px`;
+    // Resize only when needed: reallocating the canvas every frame is costly on a Pi.
+    if (this.canvasSize.w !== size.x || this.canvasSize.h !== size.y || this.canvasSize.dpr !== dpr) {
+      canvas.width = size.x * dpr;
+      canvas.height = size.y * dpr;
+      canvas.style.width = `${size.x}px`;
+      canvas.style.height = `${size.y}px`;
+      this.canvasSize = { w: size.x, h: size.y, dpr };
+    }
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -132,29 +150,37 @@ export class PlaneLayer extends L.Layer {
       const hot = this.highlight.has(a.callsign);
       const sel = a.hex === this.selected;
       const color = hot ? '#2dd4bf' : altitudeColor(a.altitudeFt);
-      const scale = hot || sel ? 1.5 : 1.1;
+      const shape = this.shapes.get(`${a.hex}|${a.type}|${a.category}`) ?? 'narrow';
+      const px = SHAPE_SIZE[shape] * this.iconScale * (hot || sel ? 1.35 : 1);
 
       if (hot || sel) {
         ctx.beginPath();
-        ctx.arc(p.x, p.y, 22, 0, Math.PI * 2);
+        ctx.arc(p.x, p.y, px * 0.78, 0, Math.PI * 2);
         ctx.strokeStyle = sel ? '#e9eef3' : '#2dd4bf';
         ctx.lineWidth = 2.5;
         ctx.stroke();
       }
+      const k = px / 64;
+      const path = shapePath(shape);
       ctx.save();
       ctx.translate(p.x, p.y);
       ctx.rotate(((a.trackDeg ?? 0) * Math.PI) / 180);
-      ctx.scale(scale, scale);
-      ctx.translate(-12, -12);
+      ctx.scale(k, k);
+      ctx.translate(-32, -32);
+      // A thin dark edge keeps the silhouette readable over the map and other planes.
+      ctx.lineWidth = 1.6 / k;
+      ctx.lineJoin = 'round';
+      ctx.strokeStyle = 'rgba(10, 13, 18, 0.85)';
+      ctx.stroke(path);
       ctx.fillStyle = color;
-      ctx.fill(PLANE);
+      ctx.fill(path);
       ctx.restore();
 
       // Labels only for the closest few (sorted by distance server-side) to stay readable.
-      if ((i < this.labelCount || hot || sel) && a.callsign) {
+      if (this.labels && (i < this.labelCount || hot || sel) && a.callsign) {
         const alt = a.altitudeFt === null ? 'GND' : `${Math.round(a.altitudeFt / 100) / 10}k`;
         const text = `${a.callsign} ${alt}`;
-        const x = p.x + 18;
+        const x = p.x + px * 0.6 + 4;
         if (hot) {
           const w = ctx.measureText(text).width + 16;
           ctx.fillStyle = '#2dd4bf';
