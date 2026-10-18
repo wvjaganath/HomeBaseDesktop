@@ -169,6 +169,19 @@ def _normalise(result, callsign, plane_lat, plane_lon, registration=""):
     }
 
 
+def _route_unknown(callsign, plane_type=""):
+    """HomeBase patch: the entry upstream returns when no source knows the route."""
+    return {
+        "airline": "Private", "plane": plane_type,
+        "origin": "?", "origin_latitude": None, "origin_longitude": None,
+        "destination": "?", "destination_latitude": None, "destination_longitude": None,
+        "owner_iata": "N/A", "owner_icao": callsign[:3] if len(callsign) >= 3 else "",
+        "time_scheduled_departure": None, "time_scheduled_arrival": None,
+        "time_real_departure": None, "time_estimated_arrival": None,
+        "distance_origin": 0, "distance_destination": 0, "trail": [],
+    }
+
+
 class RouteClient:
     """
     Unified route lookup client.
@@ -206,7 +219,10 @@ class RouteClient:
         # Check module-level cache first
         cached = _route_cache.get(callsign)
         if cached is not None and (time() - cached["ts"]) < CACHE_TTL:
-            return cached["data"]  # may be {} for a cached miss
+            # HomeBase patch: a cached miss is {}, which made overhead.py drop
+            # the plane for an hour. Return the same "route unknown" entry as
+            # the first miss, so the plane stays on the board.
+            return cached["data"] or _route_unknown(callsign, plane_type)
 
         def _cache_and_return(data):
             _route_cache[callsign] = {"data": data, "ts": time()}

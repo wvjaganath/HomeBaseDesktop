@@ -17,6 +17,9 @@ const routes: Record<string, unknown> = {
       vertical_speed: 2240, distance: 3.2, direction: 'S', distance_origin: 19, distance_destination: 1685,
       time_scheduled_departure: now - 600, time_real_departure: now - 420, time_scheduled_arrival: now + 14000, time_estimated_arrival: null,
     },
+    // What the tracker sends when no lookup source knew the route.
+    { callsign: 'UAL1234', icao24: 'ABC123', airline: 'Private', plane: '', origin: '?', destination: '?', owner_iata: 'N/A', owner_icao: 'UAL', plane_latitude: 41.7, plane_longitude: -87.9, altitude: 9000, distance: 4.1, direction: 'N' },
+    { callsign: 'N172SP', icao24: 'A0B0C0', airline: 'Private', plane: '', origin: '?', destination: '?', owner_iata: 'N/A', owner_icao: 'N17', plane_latitude: 41.71, plane_longitude: -87.91, altitude: 2500, distance: 5, direction: 'NE' },
     { garbage: true },
     'not-an-object',
   ],
@@ -67,7 +70,7 @@ describe('TrackerService', () => {
     tracker.stop();
     const s = tracker.snapshot.state;
     expect(s.reachable).toBe(true);
-    expect(s.flights).toHaveLength(1);
+    expect(s.flights).toHaveLength(3);
     const f = s.flights[0];
     expect(f?.flightNumber).toBe('WN 3508');
     expect(f?.logoIcao).toBe('SWA');
@@ -75,6 +78,9 @@ describe('TrackerService', () => {
     expect(f?.origin.delay).toBe('ontime');
     expect(f?.destination.delay).toBe('unknown');
     expect(f?.aircraftName).toBe('Boeing 737-800');
+    // Route not found: an airline flight isn't "Private", and "?" isn't an airport.
+    expect(s.flights[1]).toMatchObject({ callsign: 'UAL1234', airline: '', origin: { code: '' }, destination: { code: '' } });
+    expect(s.flights[2]).toMatchObject({ callsign: 'N172SP', airline: 'Private', origin: { code: '' } });
     expect(s.weather?.forecast).toHaveLength(1);
     expect(s.alerts).toEqual([{ text: 'ORD Arr45', level: 'orange' }, { text: 'ISS 6m', level: 'white' }]);
   });

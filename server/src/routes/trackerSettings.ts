@@ -66,14 +66,25 @@ export default async function trackerSettingsRoutes(app: FastifyInstance): Promi
       const where = issue?.path.slice(2).join('.') ?? '';
       return reply.code(400).send({ error: 'invalid_input', message: `${where ? `${where}: ` : ''}${issue?.message ?? 'invalid settings'}`, field: issue?.path.join('.') });
     }
+    let changed: boolean;
     try {
-      await admin.saveSettings(parsed.data);
-      req.log.info({ event: 'tracker_settings_saved', by: req.userId, target: admin === trackerAdmin ? 'tracker' : 'board' }, 'plane tracker settings saved');
+      ({ changed } = await admin.saveSettings(parsed.data));
+      req.log.info({ event: 'tracker_settings_saved', by: req.userId, target: admin === trackerAdmin ? 'tracker' : 'board', changed }, 'plane tracker settings saved');
       // The radar, maps and MagicMirror use the tracker's home and units.
       if (admin === trackerAdmin) void app.ctx.home.refresh();
-      return { ok: true };
     } catch (err) {
       return fail(reply, err);
+    }
+    // The tracker only reads its settings (the box, keys, sources, filters)
+    // when it starts, so restart it for a change to take effect.
+    if (!changed) return { ok: true, changed: false, restarted: false };
+    try {
+      await admin.restart();
+      req.log.info({ event: 'tracker_restarted', by: req.userId, reason: 'settings' }, 'plane tracker restarted to apply settings');
+      return { ok: true, changed: true, restarted: true };
+    } catch (err) {
+      req.log.warn({ err: String(err) }, 'plane tracker restart after saving failed');
+      return { ok: true, changed: true, restarted: false };
     }
   });
 

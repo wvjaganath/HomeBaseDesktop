@@ -237,8 +237,17 @@ email alerts turned off. Its own web page isn't published; HomeBase is the UI.
 
 **First setup:** open **Settings → Plane tracker** (or the gear on the Flights
 tab) and fill in home location and zone, the API keys (AirLabs / FlightAware /
-FR24, OpenSky, Tomorrow.io) and the source order, then **Save & apply** and
-**Restart tracker**. Within a minute or two, flights show on Home and Flights.
+FR24, OpenSky, Tomorrow.io) and the source order, then **Save & apply**.
+The tracker reads these only when it starts, so the hub restarts it after a
+save that changed something (flights pause for about 20 seconds). Within a
+minute or two, flights show on Home and Flights.
+
+**The zone (box) is the server's.** The LED board shows the planes in the
+*server* tracker's box: a box saved on the board itself isn't used while it
+follows the server. A plane in the box whose route the lookup can't find
+still shows, as "Route not found"; if that happens for every plane, check the
+FR24 key and credits (`docker compose logs tracker | grep FR24` shows the
+HTTP status) and the API call log on the tracker's stats page.
 
 **Stats & records** (the chart button on Flights, or `#/tracker`): flights per
 day and per hour with each day's list, API usage, the closest and farthest

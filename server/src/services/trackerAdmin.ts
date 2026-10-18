@@ -139,6 +139,19 @@ export class TrackerAdminError extends Error {
 type Json = Record<string, unknown>;
 const isObj = (v: unknown): v is Json => typeof v === 'object' && v !== null && !Array.isArray(v);
 
+/** JSON with object keys in a fixed order, so equal settings compare equal. */
+function stable(v: unknown): unknown {
+  if (Array.isArray(v)) return v.map(stable);
+  if (isObj(v)) return Object.fromEntries(Object.keys(v).sort().map((k) => [k, stable(v[k])]));
+  return v;
+}
+export function sameJson(a: unknown, b: unknown): boolean {
+  return JSON.stringify(stable(a)) === JSON.stringify(stable(b));
+}
+function pickKeys(o: Json, keys: string[]): Json {
+  return Object.fromEntries(keys.map((k) => [k, o[k]]));
+}
+
 /** New values over the tracker's current file, one section deep (keeps unknown keys). */
 export function mergeTrackerConfig(current: Json, next: Json): Json {
   const out: Json = { ...current };
@@ -221,15 +234,24 @@ export class TrackerAdmin extends TrackerClient<AdminPath> {
     return { config: parsed.data.config, secrets: parsed.data.secrets };
   }
 
-  async saveSettings(next: TrackerSettings): Promise<void> {
+  /**
+   * Saves the settings and says whether anything changed. The tracker's flight
+   * loop reads its settings only when it starts (its web app, which receives
+   * the save, is a separate process), so a change needs a restart to apply.
+   */
+  async saveSettings(next: TrackerSettings): Promise<{ changed: boolean }> {
     const current = await this.getSettings();
     const config = mergeTrackerConfig(current.config, next.config);
+    // Secrets come back masked ("abcd****wxyz"); a value equal to what the
+    // tracker showed is unchanged, anything else is new.
+    const changed = !sameJson(config, current.config) || !sameJson(next.secrets, pickKeys(current.secrets, Object.keys(next.secrets)));
     const r = await this.call('/api/config', { method: 'POST', json: { config, secrets: next.secrets } });
     const body = isObj(r.body) ? r.body : {};
     if (r.status !== 200 || body.ok !== true) {
       const errors = Array.isArray(body.errors) ? body.errors.filter((e): e is string => typeof e === 'string').join('; ') : '';
       throw new TrackerAdminError(errors || `The tracker refused the settings (HTTP ${r.status})`, 'rejected');
     }
+    return { changed };
   }
 
   async restart(): Promise<void> {

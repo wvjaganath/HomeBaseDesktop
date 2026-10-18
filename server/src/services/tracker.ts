@@ -338,16 +338,20 @@ export class TrackerService {
     const digits = /\d+[A-Z]?$/.exec(p.callsign)?.[0] ?? '';
     const iata = p.owner_iata && p.owner_iata !== 'N/A' ? p.owner_iata : '';
     const logoIcao = (p.owner_icao || p.callsign.slice(0, 3)).toUpperCase();
+    // The tracker's stand-in when no source knew the route is "Private", "?" → "?".
+    // For an airline callsign (three letters, then digits) that isn't true, so say nothing.
+    const noRoute = p.origin === '?' && p.destination === '?';
+    const airline = noRoute && p.airline === 'Private' && /^[A-Z]{3}\d/.test(p.callsign.trim().toUpperCase()) ? '' : p.airline;
     return {
       callsign: p.callsign.trim().toUpperCase(),
       icao24: p.icao24.toLowerCase(),
-      airline: p.airline,
+      airline,
       logoIcao: /^[A-Z0-9]{2,4}$/.test(logoIcao) ? logoIcao : '',
       flightNumber: iata && digits ? `${iata} ${digits}` : '',
       aircraftCode: p.plane,
       aircraftName: this.aircraftTypes.get(p.plane) ?? '',
       origin: {
-        code: p.origin,
+        code: p.origin === '?' ? '' : p.origin,
         name: originInfo?.name ?? '',
         lat: p.origin_latitude ?? originInfo?.lat ?? null,
         lon: p.origin_longitude ?? originInfo?.lon ?? null,
@@ -355,7 +359,7 @@ export class TrackerService {
         delay: departureDelayLevel(p.time_real_departure, p.time_scheduled_departure),
       },
       destination: {
-        code: p.destination,
+        code: p.destination === '?' ? '' : p.destination,
         name: destInfo?.name ?? '',
         lat: p.destination_latitude ?? destInfo?.lat ?? null,
         lon: p.destination_longitude ?? destInfo?.lon ?? null,

@@ -251,18 +251,52 @@
     }
   }
 
+  /** After a restart: re-read the settings (masked keys, as stored) once the tracker answers again. */
+  async function reloadAfterRestart(): Promise<void> {
+    const snapshot = saved;
+    for (let attempt = 0; attempt < 8; attempt++) {
+      await new Promise((r) => setTimeout(r, attempt === 0 ? 8_000 : 5_000));
+      if (saved !== snapshot || dirty) return; // edited again meanwhile: leave the form alone
+      try {
+        const r = await api.get<{ configured: boolean; config?: Json; secrets?: Json }>(`/api/tracker-admin/settings${q}`);
+        if (!r.configured || saved !== snapshot || dirty) return;
+        form = toForm(r.config ?? {}, r.secrets ?? {});
+        saved = JSON.stringify(form);
+        void loadStatus();
+        return;
+      } catch {
+        // still restarting
+      }
+    }
+  }
+
   async function save(): Promise<void> {
     if (!form) return;
     busy = true;
     status = { kind: '', text: '' };
     badField = '';
     try {
-      await api.put(`/api/tracker-admin/settings${q}`, toPayload(form));
-      const done = serverOnly ? '✓ Saved and applied.' : `✓ Saved on ${what} and applied. LED RGB order and GPIO changes need a restart.`;
-      status = { kind: 'ok', text: done };
-      await load();
-      status = { kind: 'ok', text: done };
-      void loadStatus();
+      // The tracker reads its settings when it starts, so the hub restarts it after a change.
+      const r = await api.put<{ changed?: boolean; restarted?: boolean }>(`/api/tracker-admin/settings${q}`, toPayload(form));
+      const done =
+        r.changed === false
+          ? '✓ Saved. Nothing had changed.'
+          : r.restarted === false
+            ? `Saved, but ${what} didn’t restart, so the changes aren’t in use yet. Press ${target === 'board' ? 'Restart board' : 'Restart tracker'}.`
+            : serverOnly
+              ? '✓ Saved. Restarting the tracker to apply it: flights and weather pause for about 20 seconds.'
+              : `✓ Saved on ${what}. Restarting it to apply: the LED display goes dark for a few seconds.`;
+      const kind = r.changed !== false && r.restarted === false ? 'err' : 'ok';
+      status = { kind, text: done };
+      if (r.restarted) {
+        // The tracker is down for a few seconds; show what was saved, and re-read it once it's back.
+        saved = JSON.stringify(form);
+        void reloadAfterRestart();
+      } else {
+        await load();
+        status = { kind, text: done };
+        void loadStatus();
+      }
     } catch (err) {
       if (err instanceof ApiError) {
         status = { kind: 'err', text: err.detail ?? 'Couldn’t save.' };
@@ -647,7 +681,7 @@
           {:else}
             <p>Let the board show what this server finds (one set of API keys, used once):</p>
             <button class="btn" onclick={() => form && (form.master_tracker = followUrl)}>Follow this server</button>
-            <small class="muted">Sets the master to <code>{followUrl}</code>, then <strong>Save &amp; apply</strong> and <strong>Restart tracker</strong>. Use the server’s LAN address here if the board can’t reach this name.</small>
+            <small class="muted">Sets the master to <code>{followUrl}</code>, then <strong>Save &amp; apply</strong> (the board restarts itself to use it). Use the server’s LAN address here if the board can’t reach this name.</small>
           {/if}
         </div>
       {/if}

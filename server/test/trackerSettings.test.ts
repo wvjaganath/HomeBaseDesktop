@@ -152,6 +152,26 @@ describe('plane tracker settings through the hub', () => {
     expect(sec.flightaware_api_keys).toEqual(['NEWFLIGHTAWAREKEY123']); // new key stored
   });
 
+  it('restarts the tracker after a change, since it reads the box, keys and sources only when it starts', async () => {
+    const first = await web('PUT', '/api/tracker-admin/settings', valid());
+    expect(first.json()).toMatchObject({ ok: true, changed: true, restarted: true });
+    expect(restarts).toBe(1);
+
+    // Saving what the tracker now shows (keys masked the way it masks them): nothing changed, no restart.
+    const shown = (await web('GET', '/api/tracker-admin/settings')).json<{ secrets: Json }>();
+    const same = valid();
+    same.secrets = Object.fromEntries(Object.keys(same.secrets).map((k) => [k, shown.secrets[k]])) as typeof same.secrets;
+    const second = await web('PUT', '/api/tracker-admin/settings', same);
+    expect(second.json()).toMatchObject({ ok: true, changed: false, restarted: false });
+    expect(restarts).toBe(1);
+
+    // A new box corner is a change.
+    same.config.location.zone_home.tl_y = 41.95;
+    expect((await web('PUT', '/api/tracker-admin/settings', same)).json()).toMatchObject({ changed: true, restarted: true });
+    expect(restarts).toBe(2);
+    expect((cfg.location as Json).zone_home).toEqual({ tl_y: 41.95, tl_x: -87.69, br_y: 41.85, br_x: -87.55 });
+  });
+
   it('rejects bad values before anything reaches the tracker', async () => {
     const before = JSON.stringify(cfg);
     const cases: Array<[string, (v: ReturnType<typeof valid>) => void]> = [

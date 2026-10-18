@@ -87,6 +87,8 @@ class FR24Client:
             )
 
             if r.status_code != 200:
+                # HomeBase patch: say why (401 bad key, 402 no credits left, 429 too many requests).
+                print(f"[FR24] Route lookup for {callsign} failed: HTTP {r.status_code}")
                 return {}
 
             flights = r.json().get("data", [])
