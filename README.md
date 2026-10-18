@@ -2,7 +2,7 @@
 
 The browser-based companion to the HomeBase iOS app. It's one home **hub server** on the Linux PC that holds everything: your HomeBase data, the plane tracker, the radar, the calendar and MagicMirror. Any browser on the home network can open it, whether that's a laptop, a desktop (installable as an app window), or a Raspberry Pi 3 B running Chromium full-screen on a monitor.
 
-> **Purpose of this README:** like `../HomeBase/README.md`, this is the canonical, complete plan. If Claude (or anyone) loses context, feeding this single file back restores the decisions, architecture, phases and current status.
+> **Purpose of this README:** like `../HomeBase/README.md`, this is the canonical, complete plan. If Claude (or anyone) loses context, feeding this single file back restores the decisions, architecture, phases and current status. **Start with** §3 (architecture as it is now), §4 (decisions; later ones replace earlier ones where marked), §8 (phases) and §10 (status log, newest last). The runbook is `deploy/README.md`, the bundled tracker's patches are in `tracker/UPSTREAM.md`, and `CLAUDE.md` has the working rules for AI assistants.
 
 ---
 
@@ -33,32 +33,42 @@ The data is already clean JSON (callsign, origin/destination, delays, `plane_lat
 
 ## 3. Architecture
 
+Current as of 2026-10-18. (The first plan had the LED Pi as the master tracker and the hub on ports 3000 + 8080 with no HTTPS; D18 and D19 replaced that.)
+
 ```
-                         ┌───────────────────── Linux PC (home server, LAN) ─────────────────────┐
-                         │                                                                       │
- iPhones (HomeBase iOS) ─┼──► :3000  /auth /sync /shares /users /health  (unchanged API)          │
-                         │                                                                       │
- Pi 3 B kiosk / laptops ─┼──► :8080 (= same hub, second port)                                    │
-                         │    HUB SERVER (Fastify + SQLite, TypeScript, Docker)                  │
-                         │      ├─ serves the web app (small built SPA, PWA-installable)         │
-                         │      ├─ /api/stream        SSE push: flights, radar, reminders, cal   │
-                         │      ├─ /api/tracker/*     allow-listed proxy + cache ─────────────┐   │
-                         │      ├─ /api/radar/*       ADS-B poller + trails ──► adsb.lol      │   │
-                         │      ├─ /api/calendar      Google Calendar secret iCal (node-ical) │   │
-                         │      ├─ /api/img/*         logo/photo resizing for small screens   │   │
-                         │      ├─ /api/devices       kiosk registry + screen settings        │   │
-                         │      └─ /mirror/*          reverse proxy (+ws) ─► MagicMirror²     │   │
-                         │                             serveronly :8081 (optional tab)        │   │
-                         └────────────────────────────────────────────────────────────────────┼───┘
-                                                                                              ▼
-                                         LED-matrix Pi 3 A+: its-a-plane  :8080  (unchanged)
-                                         /overhead/json /clock/json /weather/json /tracked/json/live …
+Linux PC: Docker Compose, LAN only (deploy/docker-compose.yml)
+
+  iPhones (HomeBase iOS) ── :3000 (plain HTTP, Bearer tokens) ───────────┐
+  Browsers + Pi 3 B kiosk ─ :8443 HTTPS ─► caddy (local CA) ──────────────┤
+                            :8080 → 308 redirect to :8443                 ▼
+                                               hub  (Fastify 5 + SQLite, TypeScript, Node 26)
+                                                ├─ web app (Svelte 5 SPA, PWA) and /api/stream (SSE push)
+                                                ├─ /auth /sync /shares /users  (unchanged for iOS)
+                                                ├─ settings in SQLite (Settings → Hub), applied live
+                                                ├─ radar poller ─────────────► adsb.lol (adsb.fi fallback)
+                                                ├─ route + airframe lookup ──► adsbdb
+                                                ├─ Google calendars (iCal) ──► calendar.google.com
+                                                ├─ /api/tracker*, /api/tracker-admin/* ──► tracker
+                                                └─ /mirror/* proxy (+ websocket) ───────► magicmirror
+                                               tracker  (its-a-plane-python, headless, MASTER)
+                                                └─ adsb.lol (OpenSky fallback), FR24 / AirLabs / FlightAware
+                                                   (your keys), Tomorrow.io (if key), NWS, FAA, CelesTrak
+                                               magicmirror  (MagicMirror² 2.38, serveronly, no published port)
+                                                └─ api.open-meteo.com (weather module)
+  LED board Pi 3 A+ ─────── :8081 ─► caddy: 6 read-only GET feed paths, LAN only ─► tracker
+  (runs its-a-plane as a SLAVE of this PC: draws only, holds no API keys)
+
+  Straight from each browser, never through the hub (CARTO's and Planespotters' terms require it):
+    map tiles   basemaps.cartocdn.com  (CARTO key from Settings → Hub)
+    photos      Planespotters (thumbnail + credit link)
+    rain radar  RainViewer (desktop only)
 ```
 
 Key properties:
-- **Same origin for everything.** The tracker and MagicMirror are reached *through* the hub (`/api/tracker/…`, `/mirror/…`), so there's no CORS and only one address to remember: `http://<linux-pc>:8080`.
-- **The hub is a "slave" of the tracker.** It only reads the JSON the LED Pi already produces, so it **burns zero extra API credits** (AirLabs/FlightAware/FR24).
-- **The server does the work, the Pi only paints.** All polling, merging, route lookups, image resizing and interpolation maths happen on the Linux PC. Screens receive small pushed updates over Server-Sent Events.
+- **One address for people:** `https://<linux-pc>:8443`. The tracker and MagicMirror are reached *through* the hub (`/api/tracker…`, `/mirror/…`), so there's no CORS and neither has a published port. The iPhones keep `http://<linux-pc>:3000`.
+- **One tracker, on the server.** The bundled tracker is the master: it does every lookup with your API keys once, and both the hub and the LED board read from it. So the LED board and the hub never spend extra API credits.
+- **Settings live in the database**, edited in the browser and applied without a restart. `deploy/hub.env` holds only `JWT_SECRET` (and the optional `SECRETS_KEY`) (D20).
+- **The server does the work, the Pi only paints.** Polling, merging, route lookups, image resizing and the maths happen on the Linux PC; screens get small pushed updates over Server-Sent Events.
 
 ---
 
@@ -70,19 +80,27 @@ Key properties:
 | D2 | Moving the server | Use `git subtree split --prefix=server` (or `git filter-repo --path server/`) so the server's history comes along. | Keeps blame/history; the iOS repo's README then points here. |
 | D3 | Server stack | Keep **Node + Fastify 5 + better-sqlite3 + zod + jose + argon2** (TypeScript via tsx). Add `@fastify/http-proxy`, `@fastify/cookie`, `node-ical`, `sharp`. | Already proven and tested; no rewrite. |
 | D4 | Web app | **Vite + TypeScript + Svelte 5**, built into `server/web-dist/`. | Svelte compiles to small plain JS with no virtual DOM, giving the lowest browser RAM of the mainstream options. Target JS bundle under 150 KB gzip. |
-| D5 | Map | **Leaflet** with dark **raster** tiles (CARTO Dark Matter) and one canvas layer for aircraft. | A Pi 3 B's GPU can't run WebGL maps (MapLibre) smoothly. Raster tiles plus canvas are cheap, and the server pre-computes everything. |
+| D5 | Map | **Leaflet** with dark **raster** tiles (CARTO Dark Matter, now with a key: D21) and one canvas layer for aircraft. | A Pi 3 B's GPU can't run WebGL maps (MapLibre) smoothly. Raster tiles plus canvas are cheap, and the server pre-computes everything. |
 | D6 | Live aircraft feed | Hub polls **adsb.lol** `/v2/lat/{lat}/lon/{lon}/dist/{nm}` every 5 s (the same provider the tracker already uses), with **adsb.fi** as fallback. | Free and no key. One request per 5 s is well under limits. Personal/non-commercial use only; credit adsb.lol/adsb.fi on the map. |
 | D7 | Logos | High-res logos keyed by **ICAO** (same keys the tracker uses) from [Jxck-S/airline-logos](https://github.com/Jxck-S/airline-logos), downloaded by a script and **resized server-side by `sharp`** to exactly the size each screen needs. Falls back to the tracker's 16 px logo with `image-rendering: pixelated`. | Sharp on any display without making the Pi decode huge images. Fair-use/identification only, so personal use. |
 | D8 | Aircraft photos | [Planespotters.net photo API](https://www.planespotters.net/photo/api), called **from the browser** (by hex), small thumbnail, photographer credit plus a link. | Their terms forbid proxying or re-hosting images and require visible attribution. |
 | D9 | Weather overlay (optional, desktop only) | RainViewer past-radar tiles (free for personal use; max zoom 7). Off on the Pi. | An extra tile layer is too much for a Pi 3 B. |
 | D10 | Auth for browsers | Move the web session from `localStorage` to an **httpOnly cookie** (same JWT/refresh logic). Add long-lived, **read-only device tokens** for kiosks. | The kiosk never needs a login, and an iframe (MagicMirror tab) can't send Bearer headers. |
-| D11 | Server host | **Linux PC, Docker Compose**: `hub`, `magicmirror` (optional), later optional `plane-tracker-headless`. | One `docker compose up -d`, easy updates, and backup is one SQLite file plus the config folder. |
-| D12 | Ports | The hub listens on **both `:3000` and `:8080`** (Docker maps both to the same container). MagicMirror on `:8081`, internal only. | The phones keep their saved `:3000`, and you open `x.x.x.x:8080` on the Pi as you planned. No clash with the tracker, which is on a different machine. |
+| D11 | Server host | **Linux PC, Docker Compose**: `hub`, `caddy` (D19), `tracker` (D18), `magicmirror` (optional). | One `docker compose up -d`, easy updates, and backup is one SQLite file plus the config folder. |
+| D12 | Ports | *Replaced by D19.* Originally: the hub on both `:3000` and `:8080`. | |
 | D13 | Display hardware | **Pi 3 B (1 GB)** as the kiosk. The Pi 3 A+ (512 MB) stays the LED tracker. | See the budget in §6.7. |
 | D14 | Layout | **Home dashboard + tabs** (§6.1). | Best fit for a single Pi screen, and works the same on a desktop. |
 | D15 | Browser vs. desktop app | **Browser.** On desktops/laptops, install it as a **PWA** (Chrome/Edge "Install app") for its own window, icon and no browser bars. **No Electron.** | Electron ships its own Chromium plus Node per app, so it uses *more* RAM and wouldn't run well on a Pi 3 B. A PWA gives the app feel for free, and updates are instant because it's served by the hub. |
 | D16 | Calendar | **Google Calendar via its "secret address in iCal format"** (read-only, no OAuth), fetched by the server every 5 minutes. Several calendars can be added. | Simplest and safe. Two-way (adding events from the hub) would need Google OAuth and is a later add. |
 | D17 | Theme | **Dark mode only**, everywhere. No light theme, no toggle. | User preference (2026-10-16). Also simpler: one palette to tune and test. |
+| D18 | Plane tracker | **Bundled** (2026-10-17): its-a-plane-python copied into `tracker/app` and run headless in the `tracker` container as the **master**; the LED Pi runs the original as a **slave** of it via Caddy `:8081` (six read-only GET paths, private addresses only). Upstream's email (shared Gmail password in the code) and map uploads to the author's server are switched off; every change is listed in `tracker/UPSTREAM.md`. HomeBase is its only UI (the Flights section's tracker page `#/tracker` for stats, records, tracking and the API log; Settings → Plane tracker). | All API keys and lookups in one place; the 512 MB Pi only drives LEDs; nothing about your home leaves the house. |
+| D19 | HTTPS and ports | **Caddy** with its own local CA on **8443** (443 is used by other software on the PC), **8080** redirects to it, **3000** stays plain HTTP for the iPhones, **8081** is the LED feed. The hub trusts `X-Forwarded-*` only from Caddy's fixed address. | `Secure`/`__Host-` cookies and HSTS for browsers without breaking the phones' saved address. |
+| D20 | Where settings live | **The database, edited in Settings → Hub** (2026-10-17): sign-up, session lengths, radar on/off and range, ADS-B contact, CARTO key (encrypted, write-only), LED board address (home-network addresses only), backups, log level. `hub.env` keeps only `JWT_SECRET` and the optional `SECRETS_KEY`, because they protect the database itself. Home location and units come from **Plane tracker → Location**. MagicMirror gets its token, home and units from the hub at start (`/internal/mirror/bootstrap`, answered only to its fixed container address) and restarts itself when they change. On first start old `hub.env` values are imported once. | The owner asked for one place to change things; env files drift and are hard to track. |
+| D21 | Map tiles | **Straight from CARTO in the browser**, keyed URL `basemaps.cartocdn.com/rastertiles/dark_all/{z}/{x}/{y}{r}.png?key=…`, no hub relay or cache (2026-10-18). Readable "© OpenStreetMap contributors © CARTO" on every map. | CARTO's basemap terms forbid server-side proxying or caching. The key is therefore visible to signed-in browsers and screens; restrict it to your hub's address in CARTO's dashboard. |
+| D22 | Outside services | Stay within each one's free terms; the table is in `deploy/README.md` ("Outside services and their terms"). Credit adsb.lol / adsb.fi (linked), Open-Meteo, Planespotters, CARTO/OSM. | The owner asked that nothing breaks a service's terms or free-usage limits. |
+| D23 | Aircraft icons | **Original** top-down silhouettes (not copied from Flightradar24 or anyone), 12 classes chosen from the ICAO type code, else the ADS-B emitter category: light, turboprop, business jet, regional, narrowbody twin, widebody twin, four-engine, helicopter, glider, military jet, balloon, ground vehicle. Size scales with the class. `web/src/lib/aircraftShapes.ts`. | Recognisable at a glance (a 747/A380 shows four engines) without using anyone's artwork. |
+| D24 | Git | Commit to the owner's **local** repo only; **never push**, never rewrite history. The owner pushes. See `CLAUDE.md`. | Owner's rule. |
+| D25 | Stopping it | `deploy/stop.sh` / `deploy/start.sh`. Portainer may stop/start the containers (the stack shows as `deploy`, "created outside of Portainer") but must not remove or redeploy it. | The stack builds from the repo and uses files beside it that a Portainer-deployed copy wouldn't have. |
 
 ---
 
@@ -90,40 +108,59 @@ Key properties:
 
 ```
 HomeBaseDesktop/
-├── README.md                    ← this file (canonical plan)
-├── server/                      ← moved from HomeBase/server (history preserved), still standalone
+├── README.md                    ← this file (canonical plan, decisions, status log)
+├── CLAUDE.md, AGENTS.md         ← orientation + the owner's git rule for AI assistants
+├── server/                      ← hub server (from HomeBase/server, history preserved), still standalone
 │   ├── src/
-│   │   ├── index.ts, app.ts     # Fastify bootstrap, security headers, static web-dist
+│   │   ├── index.ts, app.ts     # bootstrap; helmet/CSP, rate limits, static web-dist, settings hooks
+│   │   ├── env.ts               # zod-parsed env (now mostly first-run import + test defaults, D20)
+│   │   ├── db.ts                # SQLite schema, append-only migrations
 │   │   ├── routes/              # auth, sync, shares (UNCHANGED for iOS) + new:
 │   │   │   ├── stream.ts        #   GET /api/stream (SSE fan-out)
-│   │   │   ├── dashboard.ts     #   /api/config, tracker, radar, lists, calendar + sources
+│   │   │   ├── dashboard.ts     #   /api/config, tracker, radar (+details), lists, calendar(s)
 │   │   │   ├── devices.ts       #   kiosk screens: tokens, pairing, screen settings
+│   │   │   ├── hubSettings.ts   #   Settings → Hub (GET/PUT /api/hub-settings)
+│   │   │   ├── people.ts        #   Settings → People
+│   │   │   ├── trackerData.ts   #   tracker stats, records, tracked flight, route search, API log
+│   │   │   ├── trackerSettings.ts # Settings → Plane tracker (+ LED board), Wi-Fi, restart
 │   │   │   ├── logos.ts         #   sharp-resized airline logos
 │   │   │   ├── mirror.ts        #   /mirror/* allow-listed proxy (http + ws) to MagicMirror
+│   │   │   ├── mirrorBootstrap.ts # /internal/mirror/* start-up settings for MagicMirror
 │   │   │   └── status.ts        #   /api/status + "back up now"
-│   │   ├── services/            # tracker adapter, ADS-B radar, Google iCal, lists, route lookup, backups
-│   │   ├── security/            # principals + cookies, CSRF guard, SSRF-safe fetch, secret box
-│   │   └── scripts/backup.ts    # one-off backup from the shell
-│   ├── test/                    # vitest: auth, sync, services, mirror proxy, HTTPS, status
+│   │   ├── services/            # hubSettings, home (location/units), tracker adapter + admin + data,
+│   │   │                        # radar (ADS-B), routeLookup (adsbdb), calendar (iCal), lists, backup, userAdmin
+│   │   ├── security/            # principals + cookies, CSRF guard, SSRF-safe fetch (lanOnly option), secret box
+│   │   └── scripts/             # backup.ts, users.ts (list / add / reset-password / reset-link)
+│   ├── test/                    # vitest + Fastify inject (86 tests)
 │   └── web-dist/                # built web app (gitignored; produced by web/)
 ├── web/                         ← Vite + Svelte 5 SPA (PWA manifest), dark only
+│   ├── scripts/check-csp.mjs    # fails the build on anything the CSP would block
 │   └── src/
-│       ├── screens/             # Home, Flights, Radar, Calendar, Notes, Reminders, Fitness, Nutrition, Health, Mirror, Settings, Login
-│       ├── components/          # charts, calendar, flight hero, dialogs, status panel…
-│       ├── lib/                 # api client, SSE hub store, sync store, router, plane canvas layer
+│       ├── screens/             # Home, Flights, PlaneLog (tracker stats/records/tracking), Radar, CalendarPage,
+│       │                        # Notes, Reminders, Fitness, Nutrition, Health, Mirror, Settings, TrackerSettings, Login, ResetPassword
+│       ├── components/          # MiniRadar (live Home map), RecordMap, FlightHero, MonthCalendar, HubSettingsPanel,
+│       │                        # StatusPanel, PeoplePanel, charts, dialogs…
+│       ├── lib/                 # api client, SSE hub store, sync store, router, planeLayer (canvas aircraft),
+│       │                        # aircraftShapes (D23), format (tileUrl, MAP_CREDIT)
 │       └── data/                # exercise library, default plan, recipes
-├── mirror/                      ← MagicMirror² setup for the Mirror tab
-│   ├── config/                  # config.js (serveronly, basePath "/mirror/"), basepath.js, custom.css
+├── tracker/                     ← bundled plane tracker (D18)
+│   ├── app/                     # its-a-plane-python at a pinned upstream commit, minimal patches
+│   ├── headless/                # homebase_run.py supervisor, no-op rgbmatrix stand-in, failing sudo
+│   ├── requirements.txt         # exact versions with hashes
+│   └── UPSTREAM.md              # source commit, every patch, how to update
+├── mirror/                      ← MagicMirror² for the Mirror tab
+│   ├── homebase-start.cjs       # gets token/home/units from the hub, then starts serveronly (D20)
+│   ├── config/                  # config.js (basePath "/mirror/"), basepath.js, custom.css
 │   ├── modules/MMM-HomeBase/    # agenda, reminders, pinned notes via a read-only screen token
 │   └── patch-index.cjs          # image-build patch: no inline script, pre-generated positions.js
 ├── deploy/
-│   ├── docker-compose.yml       # hub + caddy + magicmirror (+ logos tool)
-│   ├── hub.Dockerfile, mirror.Dockerfile, caddy.Dockerfile
-│   ├── caddy/Caddyfile          # HTTPS with a local CA, 8080 → https redirect
-│   ├── hub.env.example (JWT_SECRET only; the rest is in Settings)
-│   ├── pin-images.sh, update.sh
+│   ├── docker-compose.yml       # hub + caddy + tracker + magicmirror (+ logos tool)
+│   ├── hub/caddy/tracker/mirror .Dockerfile
+│   ├── caddy/Caddyfile          # HTTPS (local CA) :8443, :8080 redirect, :8081 LED feed
+│   ├── hub.env.example          # JWT_SECRET (+ optional SECRETS_KEY) only
+│   ├── pin-images.sh, update.sh, stop.sh, start.sh
 │   ├── kiosk/setup-pi.sh        # Pi 3 B: Chromium kiosk, CA trust, memory tuning, auto-restart
-│   └── README.md                # the runbook
+│   └── README.md                # the runbook (setup, settings table, outside services' terms, backups, updating, stopping)
 └── scripts/update-deps.sh       # latest versions ≥ 7 days old, exact pins, audit gate
 ```
 
@@ -157,14 +194,14 @@ One app, the same on the Pi and on a desktop. A slim **tab bar** (left rail on w
  Tabs: Home · Flights · Radar · Calendar · Notes · Reminders · Fitness · Nutrition · Health · Mirror · Settings
 ```
 
-- **Home calendar is a full month grid** (2026-10-16, for the 27" kiosk screen): event chips in each day, previous/next month and Today buttons, colour per calendar (Google calendars + HomeBase workouts + holidays). Reminders, a pinned note and a compact sky/mini-radar card sit in a right-hand column. The wireframe above shows the older agenda version; the mockup canvas is the current reference.
+- **Home calendar is a full month grid** (2026-10-16, for the 27" kiosk screen): event chips in each day, previous/next month and Today buttons, colour per calendar (Google calendars + HomeBase workouts + holidays). Reminders, a pinned note and a sky card with a **live mini radar** (2026-10-18: a small round map with moving planes, not a picture; tap it for the Radar tab) sit in a right-hand column. The wireframe above shows the older agenda version; the mockup canvas is the current reference.
 - **Home** is the default on the Pi. When a flight enters the tracker's box, the flight card grows to take most of the screen (**auto-focus**) and shrinks back when the plane leaves. You get the full plane board without switching tabs.
 - **Flights** is the full-screen HD board (§6.2), **Radar** the map (§6.3). The others are the HomeBase modules.
 - Same brand as iOS: teal `#0F9D8F`, H monogram, module accents (Health coral, Notes amber, Reminders violet, Weight loss blue, Nutrition orange, Home indigo). **Dark mode only** (D17), on the kiosk and on desktop. No light theme is built.
 - Data access uses the **existing sync protocol** (`/sync/pull` + `/sync/push`, LWW). That's the same approach `server/public/js/storage.js` uses today, so phones and browser stay in sync with no new data model.
 
 ### 6.2 HD plane board (Flights tab, and the Home card when auto-focused)
-Data: `/api/tracker/overhead`, `/clock`, `/weather`, `/tracked`, `/iss`, `/nws`, cached by the hub and pushed over SSE.
+Data: the tracker's overhead, clock, weather, tracked-flight, ISS, NWS and airport-status feeds, read and validated by the hub (`server/src/services/tracker.ts`), served as `/api/tracker` and pushed over SSE. The tracker's own pages (stats, closest/farthest records with maps, Track a flight, API call log) are rebuilt as a page under Flights (`#/tracker`, `PlaneLog.svelte`, `/api/tracker/*`).
 
 - **Header:** high-res airline banner/logo (server-resized), airline name, flight number, and an aircraft photo thumbnail with credit.
 - **Route hero:** large `MDW → ONT` with city names underneath (from the tracker's `airports.json`). Codes keep the tracker's **delay colour semantics** (green/yellow/orange/red/purple/blue, grey = unknown). The arrow becomes a real **progress bar** from red at departure to green at arrival, with the aircraft icon moving along it.
@@ -174,12 +211,14 @@ Data: `/api/tracker/overhead`, `/clock`, `/weather`, `/tracked`, `/iss`, `/nws`,
 - **Tracked flight:** progress, ETA, speed and altitude, with a small route map.
 - **Themes:** *Classic LED* (a vector dot-matrix font with a glow that keeps the LED look but stays sharp) and *Clean*. The LED glow uses `text-shadow` only, with no blur filters (Pi budget).
 
-### 6.3 Radar map (Radar tab, plus a mini version on Home when idle)
-- Leaflet with dark raster tiles centred on home, range rings at 5/10/25 mi, a home marker, and the tracker's **bounding box** drawn faintly.
-- Aircraft drawn on **one canvas layer** as small heading-rotated silhouettes (a handful of shapes: jet, heavy, regional, prop, helicopter), colour-coded by altitude, with callsign labels for the closest few only. Short **trails** (last ~3 min) are kept server-side so a freshly opened screen shows history.
+### 6.3 Radar map (Radar tab, plus a live mini map on Home)
+- Leaflet with dark CARTO raster tiles loaded straight from CARTO (D21), centred on home, range rings at 5/10/25 mi and a home marker. Map and aircraft credits are shown on every map.
+- Aircraft drawn on **one canvas layer** (`web/src/lib/planeLayer.ts`) as heading-rotated **original silhouettes per aircraft type** (D23, `web/src/lib/aircraftShapes.ts`): light single, turboprop, business jet, regional jet, narrowbody twin (737/A320), widebody twin (787/777/A350), four-engine (747/A380/A340), helicopter, glider, military jet, balloon, ground vehicle. Chosen from the ICAO type code, else the ADS-B emitter category; bigger classes draw bigger. Colour-coded by altitude, with callsign labels. Short **trails** (last ~3 min) are kept server-side so a freshly opened screen shows history.
 - **Highlight:** the flight the tracker is announcing gets a ring and the brand accent colour. A tracked flight gets its route line (solid flown, dashed remaining).
 - **Tap a plane** for a side panel: logo, route (from tracker data if it's the overhead flight, otherwise a free [adsbdb](https://www.adsbdb.com) callsign lookup done and cached by the server), type, registration, altitude/speed/vertical rate, distance, photo.
-- **Pi mode:** redraws only when new data arrives (every 5 s), no per-frame animation, and no weather layer. **Desktop mode:** planes glide between polls (dead reckoning from ground speed and track at ~20 fps, capped at 15 s, paused in background tabs) and an optional **RainViewer** rain overlay (button on the map; latest frame, Universal Blue palette, native zoom ≤ 7 as the free API allows, refreshed every 10 min, tile host checked before use).
+- **Radar tab, Pi mode:** redraws only when new data arrives (every 5 s), no weather layer. **Desktop mode:** planes glide between polls (dead reckoning from ground speed and track at ~20 fps, capped at 15 s, paused in background tabs) and an optional **RainViewer** rain overlay (button on the map; latest frame, native zoom ≤ 7 as the free API allows, refreshed every 10 min, tile host checked before use).
+- **Home mini map** (`web/src/components/MiniRadar.svelte`, lazy-loaded): the same tiles and plane layer, round, non-interactive, 25 mi radius with rings at thirds, smaller icons and no labels. Planes glide at 5 fps on the kiosk and 20 fps on a computer.
+- The ADS-B poller (`server/src/services/radar.ts`) only polls while a screen is watching, every 5 s, adsb.fi only when adsb.lol fails (≤ 1 per 5 s). Settings → Status says why the radar is off when it is (no home location yet, or switched off).
 
 ### 6.4 MagicMirror
 **What changed after choosing a Pi 3 B.** Embedding the real MagicMirror on the home page means the Pi runs two full web apps at once: the hub, plus MagicMirror's own client, modules and socket connection. On 1 GB that's the quickest way to a sluggish or crashing kiosk. So:
@@ -220,6 +259,8 @@ These are acceptance criteria for every screen, checked on the real Pi:
 - **Bundled tracker (2026-10-17):** its-a-plane-python runs in its own container on the server: read-only code, non-root, no capabilities, its state on `deploy/tracker-data`, on an internal network the hub and Caddy share with it; its port isn't published. Two upstream behaviours are switched off in the copy: emailing through the author's shared Gmail account (its password was in the code) and uploading the closest/farthest maps, which show your home area, to the author's server. The LED board reads only six read-only feed paths through Caddy `:8081`, from private addresses. The stats screens' reads go through fixed paths and every field is parsed and size-capped before it reaches a browser; **Track a flight** spends API credits, so it's for signed-in people only and rate limited, and the hub keeps the looked-up legs itself so a browser can only pick one of them, not write arbitrary data into the tracker's files. The LED board's address (Settings → Hub, optional) lets the settings screen edit the board too, with the same validation; the hub only ever contacts home-network addresses for it.
 - Device tokens are hashed at rest, scoped `display:read`, and revocable from Settings → Screens.
 - Google iCal secret URLs are stored only on the server, never sent to browsers.
+- **Settings → Hub** (D20) is for signed-in people only. Secrets in it (the CARTO key) are encrypted with the secret box and write-only: the page only ever shows a hint. The LED board address is fetched with `safeFetch({ lanOnly: true })`, which refuses loopback, link-local and public addresses. MagicMirror's start-up settings (`/internal/mirror/*`) are answered only to its fixed container address `172.30.88.30`.
+- The CARTO key is the one secret a browser sees, because CARTO's terms require tiles to load straight from CARTO (D21). Restrict it to your hub's address in CARTO's dashboard.
 - MagicMirror is only reachable through the authenticated hub proxy.
 
 ---
@@ -294,7 +335,7 @@ Checked 2026-10-16 against each project's GitHub release tags. Re-check at the s
 - Rate limits: `/auth/*` 5/min/IP; device-token pairing 3/min; a global limit elsewhere. Failed logins are logged.
 
 **Browser hardening (the hub's own pages)**
-- Strict CSP: `default-src 'self'; script-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'self'; img-src 'self'` plus the tile host and the Planespotters image host; `connect-src 'self'`.
+- Strict CSP: `default-src 'self'; script-src 'self'; style-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'self'`; `img-src 'self' data:` plus `basemaps.cartocdn.com`, `*.plnspttrs.net` and `tilecache.rainviewer.com`; `connect-src 'self'` plus `api.planespotters.net` and `api.rainviewer.com` (`server/src/app.ts`; `web/scripts/check-csp.mjs` checks the build against it).
 - No inline scripts. Svelte escapes output by default, and raw HTML (`{@html}`) is banned by lint.
 - Helmet defaults, plus HSTS once HTTPS is on. `X-Content-Type-Options`, `Referrer-Policy: no-referrer`, and a `Permissions-Policy` that disables camera, microphone and geolocation.
 
@@ -332,8 +373,9 @@ Checked 2026-10-16 against each project's GitHub release tags. Re-check at the s
 - LAN-only, no port forwarding, unchanged.
 - HTTPS (Caddy + local CA) is moved up from "optional" to **Phase 7, required**, since it enables `Secure` cookies and HSTS.
 
-**Plane tracker Pi (unchanged, but worth knowing)**
-- Its Flask web UI (:8080) has no authentication, so anyone on your Wi-Fi can change its settings and Wi-Fi config. The hub never exposes those endpoints. Locking down the tracker itself is a possible later task.
+**Plane trackers**
+- The server's tracker (D18) has no published port; its unauthenticated Flask UI is reachable only on the internal Docker network, and HomeBase's Settings → Plane tracker is the way in. The LED board gets six read-only paths through Caddy :8081 from private addresses.
+- The LED board Pi's own Flask web UI (:8080) still has no authentication, so anyone on your Wi-Fi can change its settings and Wi-Fi config. Locking down the board itself is a possible later task.
 
 ### 7.6 Existing server: findings and Phase 0 fixes
 
@@ -355,14 +397,14 @@ Phase 0 is done only when the audit gate (§7.2.3) is clean and the existing cur
 
 Each phase ends with a verification step: curl, a desktop browser, and **the real Pi 3 B against the §6.7 budget**, and meets every rule in §7 (versions, audit gate, tests).
 
-- [~] **Phase 0 — Move the backend to the Linux PC.** *(Code done 2026-10-16: server imported with history, dependencies upgraded, Docker + runbook in `deploy/`. Remaining: run `scripts/update-deps.sh` to create lockfiles, deploy on the Linux PC, verify the iPhones.)* `git init` here. Bring `server/` over with history. Docker Compose with ports 3000 + 8080. Copy the **existing SQLite DB and `.env` (same `JWT_SECRET`)** to the Linux PC, so accounts, refresh tokens and each phone's sync cursor stay valid. A fresh DB would leave the phones' cursors ahead of the server and they'd miss data. **iOS app:** no code change needed. The server address is entered in the app (Settings → Server, stored in UserDefaults `serverURL`), so on each iPhone change it to `http://<linux-pc>:3000` and tap Test connection. The app's ATS setting (`NSAllowsLocalNetworking`) already allows plain HTTP on the LAN. **HomeBase repo:** update its README to say the backend now lives in `HomeBaseDesktop/server`, then remove `HomeBase/server/` once the Linux PC is verified. Optional: add `NSLocalNetworkUsageDescription` to the iOS Info.plist before Phase 11 (real-device install) so the local-network permission prompt has a proper message. **Verify:** the iOS app syncs a note both ways against the Linux PC, and `:8080/` serves the old tracker website.
+- [~] **Phase 0 — Move the backend to the Linux PC.** *(Code done 2026-10-16: server imported with history, dependencies upgraded and pinned with lockfiles, Docker + runbook in `deploy/`. Remaining: deploy on the Linux PC, verify the iPhones.)* `git init` here. Bring `server/` over with history. Docker Compose with ports 3000 + 8080. Copy the **existing SQLite DB and `.env` (same `JWT_SECRET`)** to the Linux PC, so accounts, refresh tokens and each phone's sync cursor stay valid. A fresh DB would leave the phones' cursors ahead of the server and they'd miss data. **iOS app:** no code change needed. The server address is entered in the app (Settings → Server, stored in UserDefaults `serverURL`), so on each iPhone change it to `http://<linux-pc>:3000` and tap Test connection. The app's ATS setting (`NSAllowsLocalNetworking`) already allows plain HTTP on the LAN. **HomeBase repo:** update its README to say the backend now lives in `HomeBaseDesktop/server`, then remove `HomeBase/server/` once the Linux PC is verified. Optional: add `NSLocalNetworkUsageDescription` to the iOS Info.plist before Phase 11 (real-device install) so the local-network permission prompt has a proper message. **Verify:** the iOS app syncs a note both ways against the Linux PC, and `:8080/` serves the old tracker website.
 - [~] **Phase 1 — Hub shell.** *(Code done 2026-10-16: cookie sessions + CSRF guard, kiosk device tokens + pairing, SSE stream, Svelte app with tab rail, PWA manifest, Pi setup script. Remaining: build + verify on the Pi.)* Vite/Svelte app, tab bar, theme, cookie session (keeping Bearer for iOS), SSE `/api/stream`, device tokens, PWA manifest, Pi setup script. **Verify:** the Pi boots straight into the hub, survives a reboot, and is under budget with an empty Home.
 - [~] **Phase 2 — Home dashboard.** *(Code done 2026-10-16: month calendar with month navigation, Google iCal sources (encrypted), reminders + pinned note, weather/moon from the tracker, alerts bar, sky card. Remaining: verify with real calendars.)* Clock, weather (from the tracker's cache), Google Calendar widget + `/api/calendar`, reminders and pinned-notes widgets, alerts ticker, and a compact flight card. **Verify:** a reminder added on the phone appears on the Pi within seconds, and a Google event appears within 5 minutes.
 - [~] **Phase 3 — HD plane board.** *(Code done 2026-10-16: allow-listed tracker adapter (tested against a fake tracker), logo resizing from Jxck-S/airline-logos, Flights tab in LED + Clean, auto-focus on Home, Planespotters photos. Remaining: side-by-side check with the LED panel.)* Tracker adapter (allow-list, cache, SSE diffs), logo fetch + `sharp` resizing, Flights tab, auto-focus on Home, tracked-flight view, both themes. **Verify:** side by side with the LED matrix, the same flight, colours and progress, sharp on the monitor.
-- [~] **Phase 4 — Radar.** *(Code done 2026-10-16: demand-driven adsb.lol/adsb.fi poller with trails, Leaflet + single canvas layer, highlight/follow, detail panel with adsbdb route + airframe. RainViewer overlay and desktop glide added 2026-10-17. Remaining: Pi performance check.)* ADS-B poller + trails, Leaflet canvas layer, overhead/tracked highlight, detail panel + photos, Pi vs. desktop modes, idle mini-radar on Home. **Verify:** a busy sky on the Pi stays within the CPU budget.
+- [~] **Phase 4 — Radar.** *(Code done 2026-10-16: demand-driven adsb.lol/adsb.fi poller with trails, Leaflet + single canvas layer, highlight/follow, detail panel with adsbdb route + airframe. RainViewer overlay and desktop glide added 2026-10-17. Live mini map on Home and per-type aircraft silhouettes added 2026-10-18. Remaining: Pi performance check, including the Home mini map's 5 fps glide.)* ADS-B poller + trails, Leaflet canvas layer, overhead/tracked highlight, detail panel + photos, Pi vs. desktop modes, idle mini-radar on Home. **Verify:** a busy sky on the Pi stays within the CPU budget.
 - [~] **Phase 5 — HomeBase modules on the web.** *(Code done 2026-10-16: Notes (checklists, pin, share read/write), Reminders (repeat rolls forward like iOS), Weight loss (weigh-ins, workouts, weekly plan, exercise library, goals), Nutrition (meal log, recipes, targets), Health charts; same sync protocol as the iPhones; `/legacy` retired. Verified browser ↔ iPhone API round trips (14/14). Remaining: check with the real iPhones.)* Notes (checklists, pin, share), Reminders, Calendar tab, then port Weight loss and Nutrition from `public/` (retire `/legacy` at parity), then read-only Health charts. **Verify:** edits round-trip phone ↔ browser.
 - [~] **Phase 6 — MagicMirror tab (optional).** *(Code done 2026-10-17: `magicmirror` Compose service (MagicMirror 2.38.0, read-only, unprivileged), allow-listed authenticated proxy with websockets, `MMM-HomeBase` (agenda, reminders, pinned notes via a read-only screen token). Verified in the full Docker stack over HTTPS: page, data and `wss://` socket load with no CSP errors; `/cors`, `/reload`, traversal and cross-site upgrades blocked. Remaining: memory check on the Pi.)* Compose service, reverse proxy (+ws), config, `MMM-HomeBase`. **Verify:** the tab loads on demand and memory returns to baseline after leaving it.
-- [~] **Phase 7 — Ops + HTTPS.** *(Code done 2026-10-17: Caddy with a local CA (8443 + 8080 redirect), `COOKIE_SECURE=auto`, `TRUST_PROXY` limited to Caddy, nightly backups + **Back up now**, Settings → Status, `deploy/update.sh`, CA install in `setup-pi.sh`, firewall/SSH checklist in deploy/README.md. Verified by building and running the Compose stack. Remaining: deploy on the Linux PC.)* Nightly backup, a status panel in Settings (tracker reachable? ADS-B ok? calendar ok?), update script, **HTTPS via Caddy + local CA (required, §7.5)**, host firewall and SSH hardening checklist.
+- [~] **Phase 7 — Ops + HTTPS.** *(Code done 2026-10-17: Caddy with a local CA (8443 + 8080 redirect), `COOKIE_SECURE=auto`, `TRUST_PROXY` limited to Caddy, nightly backups + **Back up now**, Settings → Status, `deploy/update.sh`, CA install in `setup-pi.sh`, firewall/SSH checklist in deploy/README.md. Verified by building and running the Compose stack. 2026-10-17/18: every setting except `JWT_SECRET` moved into Settings → Hub (D20); terms check of every outside service (D21, D22); `deploy/stop.sh` / `start.sh` (D25). Remaining: deploy on the Linux PC.)* Nightly backup, a status panel in Settings (tracker reachable? ADS-B ok? calendar ok?), update script, **HTTPS via Caddy + local CA (required, §7.5)**, host firewall and SSH hardening checklist.
 - [x] **Headless tracker on the Linux PC.** *(Done 2026-10-17: its-a-plane-python copied into `tracker/` and run by the `tracker` compose service; HomeBase screens for its stats, records, tracking and API log; LED board as a slave via Caddy :8081. See deploy/README.md §5.)* Run `its-a-plane-python` in a container with a stub for `rgbmatrix`, as the **master**, and make the LED Pi 3 A+ a **slave** of it. All API keys and lookups then live on the server, and the 512 MB Pi only drives the LEDs.
 
 ---
@@ -401,9 +443,10 @@ Still open (non-blocking):
 | 2026-10-17 | **Plane tracker settings in the browser** (Settings → Plane tracker, or the gear on Flights): every setting from the tracker's own `/config` page (location & zone, display & night dimming, flights, stats logging, master/slave, API sources with priority order and keys), its system status & API usage cards, Wi-Fi scan/connect, and Restart, saved on the LED Pi through the hub. Server 60/60 tests (6 new, against a stand-in that behaves like the tracker's Flask app); browser test 22/22. |
 | 2026-10-17 | **The plane tracker runs on the server.** its-a-plane-python (commit c64ca80) copied into `tracker/app` and run headless by a new `tracker` compose service (Python 3.14, hash-pinned dependencies, OSV clean), starting fresh with email alerts off. The LED board becomes a slave of it through Caddy `:8081`. New HomeBase screens rebuild the tracker's own pages: **Stats** (per day, per hour, each day's flights, API usage), **Closest & farthest** with maps, **Track a flight** (callsign lookup or route search, pick the leg, live progress) and the **API call log**. Settings → Plane tracker hides the LED-only sections for the bundled tracker and, with `LED_BOARD_URL`, switches to the board (with **Follow this server**). Server 71/71 tests; browser test 21/21 against the real tracker code. |
 | 2026-10-17 | Security review of everything from outside (tracker copy byte-for-byte upstream apart from 3 patches; 0 known vulnerabilities in 354 npm, 213 MagicMirror and 18 Python packages; no secrets in git history). Airline logos pinned to a commit and read as plain PNG files only; tracker logs hide API keys. |
-| 2026-10-17 | **Map tiles need a key now:** CARTO stamps "API KEY REQUIRED" on keyless tiles (since late Aug 2026). Tiles go through the hub (`/api/tiles`, disk cache) with `CARTO_API_KEY` from hub.env, so the key never reaches a browser. The radar takes home from the plane tracker's settings when `HOME_LAT`/`HOME_LON` aren't set, and Settings → Status says why it's off. Server 79/79 tests. |
+| 2026-10-17 | *(The tile relay described here was removed on 2026-10-18 for CARTO's terms; see below and D21.)* **Map tiles need a key now:** CARTO stamps "API KEY REQUIRED" on keyless tiles (since late Aug 2026). Tiles go through the hub (`/api/tiles`, disk cache) with `CARTO_API_KEY` from hub.env, so the key never reaches a browser. The radar takes home from the plane tracker's settings when `HOME_LAT`/`HOME_LON` aren't set, and Settings → Status says why it's off. Server 79/79 tests. |
 | 2026-10-17 | **Settings in the browser, not in files.** Everything the hub reads except `JWT_SECRET` (and the optional `SECRETS_KEY`) moved from `hub.env` to **Settings → Hub**, stored in the database and applied without a restart: sign-up, session lengths, radar on/off and range, ADS-B contact, the CARTO key (encrypted, write-only), the LED board address (home-network addresses only), backups, log detail. Home location and units come from **Plane tracker → Location** (one place). MagicMirror needs no `mirror.env`: it gets a read-only token, home and units from the hub (answered only to its container address) and restarts itself when they change. First start copies the old `hub.env` values in once and lists the lines to delete. Server tests all pass. |
-| 2026-10-17 | Map key fix: tiles come from CARTO's documented keyed address (`basemaps.cartocdn.com/rastertiles/dark_all/…?key=`, old per-subdomain address as fallback). CARTO's "API KEY REQUIRED" tile is recognised (ETag `wm-…`) and never cached; tile URLs carry a fingerprint of the key so browsers drop old tiles at once; the old hub tile cache is cleared. Settings → Status shows CARTO's last answer (working / still watermarked / refused / unreachable). Server 87/87 tests. |
+| 2026-10-17 | *(Superseded on 2026-10-18: no hub tile relay or cache any more.)* Map key fix: tiles come from CARTO's documented keyed address (`basemaps.cartocdn.com/rastertiles/dark_all/…?key=`, old per-subdomain address as fallback). CARTO's "API KEY REQUIRED" tile is recognised (ETag `wm-…`) and never cached; tile URLs carry a fingerprint of the key so browsers drop old tiles at once; the old hub tile cache is cleared. Settings → Status shows CARTO's last answer (working / still watermarked / refused / unreachable). Server 87/87 tests. |
 | 2026-10-18 | **Terms check of every outside service** (table in deploy/README.md). CARTO's basemap terms forbid relaying or caching tiles on a server, so the hub's tile relay is gone: maps load tiles straight from CARTO with the saved key, and the stored tiles are deleted. Readable OpenStreetMap/CARTO credit on every map; adsb.lol/adsb.fi credited (with links, as adsb.fi asks); Open-Meteo credited on MagicMirror. Tracker: no Tomorrow.io calls without a key, no Nominatim lookups on the server, OpenSky backs off after HTTP 429. |
 | 2026-10-18 | **Live radar on Home and plane shapes by type.** The Home radar is now a small live map (same CARTO tiles and plane layer as the Radar tab): planes glide between updates (5 frames a second on the Pi kiosk, 20 on a computer); tap it to open the Radar tab. Every map now draws an original top-down outline per aircraft type, chosen from the ICAO type code and, when that's unknown, the ADS-B category: light single (C172), turboprop (DH8D, ATR), business jet, regional jet (CRJ, E-jets), twin-engine narrowbody (737/A320), twin-engine widebody (787/777/A350), four-engine (747, A380, A340), helicopter, glider, military jet, balloon and ground vehicle; bigger aircraft draw bigger. Checked in headless Chromium against 13 fake planes. Server 86/86 tests; web check, lint, CSP check and build clean. |
 | 2026-10-18 | **Stop and start scripts.** `deploy/stop.sh` backs up the database and stops the hub, Caddy, the tracker and MagicMirror (nothing deleted; stays off across reboots); `deploy/start.sh` brings them back. MagicMirror now exits at once on a stop request instead of waiting out Docker's 10-second timeout. deploy/README §9 covers stopping from Portainer (the stack shows there as `deploy`, created outside Portainer: stop/start its containers, don't remove or redeploy it). Scripts checked with shellcheck and a stand-in `docker`. |
+| 2026-10-18 | **Docs brought up to date with the code** so a fresh reader (or another AI model) sees the system as it is. README: §3 architecture redrawn (bundled tracker as master, LED board as slave on :8081, Caddy HTTPS :8443, settings in the database, what browsers load directly); §4 decisions D18–D25 added (bundled tracker, HTTPS/ports, settings in the DB, CARTO tiles straight from CARTO, outside services' terms, original aircraft icons, local-only git, stopping), D5/D11/D12 marked as replaced; §5 layout matches the files; §6.3 radar, §6.8 and §7.5 security, §7.4 CSP and §8 phases updated; the two tile-relay log rows marked superseded. `server/README.md` lists every route and who may call it. `CLAUDE.md` now has a start-here guide, the rules that are easy to break, and the checks to run; `AGENTS.md` points other assistants to it. |
