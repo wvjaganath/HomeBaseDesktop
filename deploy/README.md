@@ -325,3 +325,36 @@ It backs up the database, pulls the code, re-pins the base images to their
 newest patched digests, rebuilds (failing on known vulnerabilities), restarts
 and shows the status. Run it monthly, or whenever `update-deps.sh` brought in a
 security fix.
+
+## 9. Stopping and starting
+
+```bash
+./deploy/stop.sh      # backup, then stop the hub, Caddy, the tracker and MagicMirror
+./deploy/start.sh     # start them again and wait for the hub
+```
+
+`stop.sh` takes a database backup first (`--no-backup` skips it), stops the
+front door (Caddy) before the rest, and takes a few seconds. Nothing is
+deleted: data, backups, settings and the built containers stay, so `start.sh`
+brings everything back as it was. Once stopped, HomeBase **stays off after a
+reboot** until you run `start.sh`. If you just turn the PC off without
+stopping HomeBase, it comes back by itself when the PC starts.
+
+While it's off, an open screen (the Pi included) keeps showing the last data
+with the **Live** dot grey, and a freshly opened one says "Can't reach the hub,
+retrying every 10 seconds"; both pick up again by themselves once it's back.
+The iPhone app can't sync and the LED board has no feed until then.
+
+**From Portainer.** HomeBase was started with `docker compose`, so Portainer
+lists it under **Stacks** as `deploy` (named after the folder) with "This stack
+was created outside of Portainer. Control over this stack is limited." You can
+still stop it there: open the stack (or **Containers**, filtered by stack
+`deploy`), tick `deploy-hub-1`, `deploy-caddy-1`, `deploy-tracker-1` and
+`deploy-magicmirror-1`, and press **Stop**; tick them again and press **Start**
+to bring them back. That's the same as `stop.sh` without the backup (the
+nightly backups still run). Don't use **Remove**, and don't have Portainer
+redeploy the stack from its editor or from Git: the stack builds its images
+from this folder and uses files beside it (`hub.env`, `.env`, `data/`,
+`caddy/`, `../mirror/config`), which a Portainer-deployed copy wouldn't have.
+Keep `update.sh`, `stop.sh` and `start.sh` as the way to change it, and
+Portainer for watching it, logs, and stop/start.

@@ -66,6 +66,17 @@ async function main () {
 	require("./serveronly");
 }
 
+/* As the container's first process, Node ignores a stop request that nothing
+ * handles, so `docker compose stop` would wait and then kill it. Exit at once
+ * unless MagicMirror has its own handler (then it shuts down its modules). */
+for (const sig of ["SIGTERM", "SIGINT"]) {
+	process.on(sig, () => {
+		if (process.listenerCount(sig) > 1) return;
+		console.log(`[HomeBase] ${sig}: stopping`);
+		process.exit(0);
+	});
+}
+
 main().catch((err) => {
 	console.error("[HomeBase] could not start MagicMirror:", err);
 	process.exit(1);
