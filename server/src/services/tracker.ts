@@ -330,8 +330,9 @@ export class TrackerService {
   }
 
   private normalize(p: z.infer<typeof overheadEntrySchema>): Flight {
-    const dOrigin = p.distance_origin;
-    const dDest = p.distance_destination;
+    // The tracker sends 0 when it doesn't know where the airport is: that's "unknown", not 0 mi.
+    const dOrigin = p.origin_latitude === null && !p.distance_origin ? null : p.distance_origin;
+    const dDest = p.destination_latitude === null && !p.distance_destination ? null : p.distance_destination;
     const progress = dOrigin !== null && dDest !== null && dOrigin + dDest > 0 ? dOrigin / (dOrigin + dDest) : null;
     const originInfo = this.airportNames.get(p.origin.toUpperCase()) ?? null;
     const destInfo = this.airportNames.get(p.destination.toUpperCase()) ?? null;

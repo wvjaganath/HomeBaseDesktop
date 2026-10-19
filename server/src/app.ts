@@ -83,6 +83,10 @@ export async function buildApp(opts: BuildOptions): Promise<FastifyInstance> {
   });
   app.decorateRequest('principal', null);
   app.decorateRequest('userId', '');
+  // Which build of the web app this hub serves (its hashed entry script), so
+  // screens opened before an update can tell and reload themselves.
+  const webDist = opts.webDist ?? path.join(serverRoot, 'web-dist');
+  app.decorate('webBuild', readWebBuild(webDist));
   app.decorate('requireUser', requireUser(ctx));
   app.decorate('requireViewer', requireViewer(ctx));
   app.decorate('authenticate', requireUser(ctx));
@@ -153,7 +157,6 @@ export async function buildApp(opts: BuildOptions): Promise<FastifyInstance> {
   await app.register(hubSettingsRoutes);
   await app.register(mirrorBootstrapRoutes);
 
-  const webDist = opts.webDist ?? path.join(serverRoot, 'web-dist');
   if (fs.existsSync(webDist)) {
     await app.register(fastifyStatic, {
       root: webDist,
@@ -192,4 +195,14 @@ export async function buildApp(opts: BuildOptions): Promise<FastifyInstance> {
   });
 
   return app;
+}
+
+/** The web app's entry script path (e.g. /assets/index-AbC123.js), or '' if not built. */
+function readWebBuild(webDist: string): string {
+  try {
+    const html = fs.readFileSync(path.join(webDist, 'index.html'), 'utf8');
+    return /<script[^>]+src="(\/assets\/index-[\w-]+\.js)"/.exec(html)?.[1] ?? '';
+  } catch {
+    return '';
+  }
 }

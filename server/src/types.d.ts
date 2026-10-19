@@ -5,6 +5,8 @@ import type { Principal } from './security/principal.js';
 declare module 'fastify' {
   interface FastifyInstance {
     ctx: AppContext;
+    /** The web app build this hub serves (its entry script path), '' when not built. */
+    webBuild: string;
     /** A signed-in person (Bearer or cookie). Never a kiosk device. */
     requireUser: (req: FastifyRequest, reply: FastifyReply) => Promise<void>;
     /** A person or a paired kiosk device; use only on read-only routes. */

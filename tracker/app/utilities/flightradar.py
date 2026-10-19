@@ -29,6 +29,7 @@ from utilities.airlines import get_airline_name as _lookup_airline
 
 _cache    = {}
 CACHE_TTL = 3600  # 1 hour
+MISS_TTL  = 120   # HomeBase patch: "no flights yet" (e.g. just took off) is retried after 2 minutes
 
 
 def _to_unix(dt_str):
@@ -60,7 +61,7 @@ class FR24Client:
 
         now = time()
         cached = _cache.get(callsign)
-        if cached and (now - cached["ts"]) < CACHE_TTL:
+        if cached and (now - cached["ts"]) < (CACHE_TTL if cached["data"] else MISS_TTL):
             return cached["data"]
 
         try:

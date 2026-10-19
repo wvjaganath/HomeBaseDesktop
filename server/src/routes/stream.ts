@@ -48,7 +48,7 @@ export default async function streamRoutes(app: FastifyInstance): Promise<void> 
     const send = (event: string, data: unknown): void => {
       res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
     };
-    send('hello', { topics: [...topics] });
+    send('hello', { topics: [...topics], build: app.webBuild });
 
     const unsubs: Array<() => void> = [];
     if (topics.has('tracker')) {

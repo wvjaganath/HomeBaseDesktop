@@ -6,6 +6,7 @@ BASE_DIR      = os.path.dirname(os.path.dirname(__file__))
 # Module-level cache so it persists across grab cycles
 _route_cache = {}  # callsign -> result dict
 CACHE_TTL = 3600   # 1 hour
+MISS_TTL  = 120    # HomeBase patch: retry a route nobody knew after 2 minutes, not an hour
 
 # Import each client — they self-disable if no key is configured
 from utilities.airlabs     import get_flight_details as _airlabs_details, get_tracked_flight as _airlabs_tracked, is_available as _airlabs_ok
@@ -218,7 +219,7 @@ class RouteClient:
 
         # Check module-level cache first
         cached = _route_cache.get(callsign)
-        if cached is not None and (time() - cached["ts"]) < CACHE_TTL:
+        if cached is not None and (time() - cached["ts"]) < (CACHE_TTL if cached["data"] else MISS_TTL):
             # HomeBase patch: a cached miss is {}, which made overhead.py drop
             # the plane for an hour. Return the same "route unknown" entry as
             # the first miss, so the plane stays on the board.

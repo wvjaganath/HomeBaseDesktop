@@ -63,6 +63,12 @@ class Hub {
       this.connected = true;
       this.backoff = 1_000;
     });
+    // After an update the hub serves a new build; a screen that was already open
+    // (the kiosk runs for days) reloads itself to get it.
+    es.addEventListener('hello', (e) => {
+      const { build } = JSON.parse((e as MessageEvent<string>).data) as { build?: string };
+      reloadIfOutdated(build);
+    });
     es.addEventListener('tracker', (e) => {
       this.tracker = (JSON.parse((e as MessageEvent<string>).data) as { state: TrackerState }).state;
     });
@@ -108,3 +114,19 @@ class Hub {
 }
 
 export const hub = new Hub();
+
+/** Reload once when the hub serves a different build of the web app than this page runs. */
+function reloadIfOutdated(serverBuild: string | undefined): void {
+  if (!serverBuild || import.meta.env.DEV) return;
+  const own = document.querySelector('script[type="module"][src*="/assets/index-"]')?.getAttribute('src') ?? '';
+  if (!own || own === serverBuild) return;
+  // Guard against a reload loop if something keeps serving the old page.
+  try {
+    const last = JSON.parse(sessionStorage.getItem('hb-reload') ?? 'null') as { to?: string; at?: number } | null;
+    if (last?.to === serverBuild && Date.now() - (last.at ?? 0) < 5 * 60_000) return;
+    sessionStorage.setItem('hb-reload', JSON.stringify({ to: serverBuild, at: Date.now() }));
+  } catch {
+    // no storage: reload anyway, once per page load
+  }
+  location.reload();
+}

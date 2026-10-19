@@ -492,7 +492,10 @@ else:
                         except Exception:
                             pass
 
-                        if callsign in self._flight_cache:
+                        # HomeBase patch: reuse cached details only when they have a route,
+                        # so a plane first seen before the lookup knew it (just after takeoff)
+                        # is looked up again (routelookup.py retries a miss every 2 minutes).
+                        if callsign in self._flight_cache and self._flight_cache[callsign].get("origin") not in ("?", "", None):
                             details = self._flight_cache[callsign]
                         else:
                             details = self._fr24.get_flight_details(callsign, plane_lat, plane_lon)
@@ -515,6 +518,7 @@ else:
                             "plane_longitude":      plane_lon,
                             "vertical_speed":       state["vertical_speed"],
                             "altitude":             state.get("altitude", 0),
+                            "ground_speed":         state.get("ground_speed"),  # HomeBase patch: for the speed shown
                             "heading":              state.get("heading"),
                             "callsign":             callsign,
                             "icao24":               state.get("icao24", ""),
