@@ -23,6 +23,7 @@
   const dep = $derived(flight.times.actualDeparture);
   const depText = $derived.by(() => {
     if (!flight.origin.code && !flight.destination.code) return 'Route not found (the flight lookup had no answer)';
+    if (flight.routeSource === 'schedule') return 'Usual route for this flight (adsbdb schedule data)';
     if (dep === null) return 'Departure time unavailable';
     const late = flight.times.scheduledDeparture ? Math.round((dep - flight.times.scheduledDeparture) / 60) : null;
     const when = `Departed ${shortTime(new Date(dep * 1000))}`;

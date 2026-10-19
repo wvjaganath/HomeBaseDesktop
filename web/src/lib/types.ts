@@ -22,6 +22,8 @@ export interface Flight {
   origin: Airport;
   destination: Airport;
   progress: number | null;
+  /** tracker = its FR24/AirLabs/FlightAware lookup; schedule = adsbdb's usual route for the callsign. */
+  routeSource: 'tracker' | 'schedule' | null;
   position: {
     lat: number | null;
     lon: number | null;

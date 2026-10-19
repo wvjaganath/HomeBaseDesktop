@@ -86,6 +86,35 @@ describe('TrackerService', () => {
     expect(s.alerts).toEqual([{ text: 'ORD Arr45', level: 'orange' }, { text: 'ISS 6m', level: 'white' }]);
   });
 
+  it('fills a route the tracker couldn’t find from adsbdb’s schedule, only when the plane is on it', async () => {
+    const env = loadEnv({ JWT_SECRET: 'x'.repeat(40), TRACKER_URL: `http://127.0.0.1:${port}` });
+    const known: Record<string, unknown> = {
+      UAL1234: { airline: { name: 'United Airlines', icao: 'UAL', iata: 'UA' }, origin: { code: 'ORD', name: "Chicago O'Hare International Airport", city: 'Chicago', lat: 41.978, lon: -87.904 }, destination: { code: 'DEN', name: 'Denver International Airport', city: 'Denver', lat: 39.861, lon: -104.673 } },
+    };
+    const routes = {
+      route: async (cs: string) => known[cs] ?? null,
+      airframe: async (hex: string) => (hex === 'abc123' ? { type: 'Airbus A319', icaoType: 'A319', manufacturer: 'Airbus', registration: 'N123UA', owner: '' } : null),
+    } as unknown as import('../src/services/routeLookup.js').RouteLookupService;
+    const tracker = new TrackerService(env, new EventBus(), log, { routes, units: () => 'imperial' });
+    tracker.start();
+    await new Promise((r) => setTimeout(r, 800));
+    tracker.stop();
+    const [swa, ual, private_] = tracker.snapshot.state.flights;
+    expect(swa?.routeSource).toBe('tracker'); // the tracker's own route is kept
+    expect(ual).toMatchObject({ routeSource: 'schedule', airline: 'United Airlines', flightNumber: 'UA 1234', aircraftCode: 'A319', origin: { code: 'ORD', name: "Chicago O'Hare" }, destination: { code: 'DEN' } });
+    expect(ual?.origin.distance).toBeGreaterThan(10);
+    expect(ual?.progress).toBeGreaterThan(0);
+    expect(private_?.routeSource).toBeNull(); // tail numbers aren't looked up
+
+    // A schedule route the plane can't be on (Boston → New York over Chicago) is ignored.
+    known.UAL1234 = { airline: null, origin: { code: 'BOS', name: 'Logan', city: 'Boston', lat: 42.36, lon: -71.01 }, destination: { code: 'JFK', name: 'JFK', city: 'New York', lat: 40.64, lon: -73.78 } };
+    const again = new TrackerService(env, new EventBus(), log, { routes, units: () => 'imperial' });
+    again.start();
+    await new Promise((r) => setTimeout(r, 800));
+    again.stop();
+    expect(again.snapshot.state.flights[1]).toMatchObject({ routeSource: null, origin: { code: '' } });
+  });
+
   it('only ever requests allow-listed read-only endpoints', () => {
     const allowed = new Set(['/overhead/json', '/tracked/json/live', '/weather/json', '/clock/json', '/api/aircraft-types', '/api/airport-coords']);
     expect(requested.length).toBeGreaterThan(0);

@@ -108,7 +108,7 @@ personal, non-commercial use on a home network.
 | **OpenSky** (anonymous) | tracker backup only, when adsb.lol fails | 400 credits/day without an account; non-commercial | Pauses for as long as OpenSky asks once the allowance is used (patch). |
 | **CARTO** basemaps (your key) | maps in the browser | Free non-commercial ≤ 5M tiles/month; **no server-side proxying or caching**; browser cache ≤ 30 days; prominent OpenStreetMap + CARTO credit | Tiles load straight from CARTO in the browser; readable credit on every map. |
 | **Planespotters.net** | aircraft photos in the browser | Photographer credit next to the photo, link to the photo page, images loaded from their URLs (never stored or proxied), browser sends Origin/Referer | All of these; only the JSON answer is kept in the page's memory. |
-| **adsbdb.com** | Radar plane details | Free public API (no published limits) | One lookup per selected plane, cached by the hub. |
+| **adsbdb.com** | Radar plane details; the usual route and aircraft type of a plane in your box when the tracker's lookup has none | Free public API (no published limits) | One lookup per plane, cached 6 hours by the hub; after an error it waits a minute before asking again. |
 | **weather.gov** | tracker weather alerts | Open data, any use; User-Agent required | Sends one; every 10 min. Turn off in Plane tracker → Flights. |
 | **CelesTrak** | tracker ISS passes | Download each data set at most once per update (GP: every 2 h); stop on errors | Once every 12 h; backs off on errors. Turn off in Plane tracker → Flights. |
 | **FAA NAS status** | tracker airport delays | US government public data | Every 5 min, only with an airport watch list. |
@@ -245,7 +245,10 @@ minute or two, flights show on Home and Flights.
 **The zone (box) is the server's.** The LED board shows the planes in the
 *server* tracker's box: a box saved on the board itself isn't used while it
 follows the server. A plane in the box whose route the lookup can't find
-still shows, as "Route not found"; if that happens for every plane, check the
+still shows. The hub then fills in the flight's usual route from adsbdb's
+schedule data (marked "Usual route" on the card, since a flight can fly a
+different leg that day); "Route not found" means neither knew it. If the
+tracker's own lookup never finds routes, check the
 FR24 key and credits (`docker compose logs tracker | grep FR24` shows the
 HTTP status) and the API call log on the tracker's stats page.
 

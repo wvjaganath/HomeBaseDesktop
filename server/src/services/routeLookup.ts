@@ -97,7 +97,20 @@ export class RouteLookupService {
     this.settings = settings ?? settingsFromEnv(env);
   }
 
-  private fetch(path: string): Promise<unknown> {
+  /** After a failure (not a 404), wait before asking adsbdb again. */
+  private pausedUntil = 0;
+
+  private async fetch(path: string): Promise<unknown> {
+    if (Date.now() < this.pausedUntil) throw new Error('adsbdb paused after an error');
+    try {
+      return await this.request(path);
+    } catch (err) {
+      if (!(err instanceof FetchError && err.status === 404)) this.pausedUntil = Date.now() + 60_000;
+      throw err;
+    }
+  }
+
+  private request(path: string): Promise<unknown> {
     const c = this.settings().adsbContact;
     const contact = c ? ` (+${c})` : '';
     return safeFetchJson(`https://${HOST}${path}`, {

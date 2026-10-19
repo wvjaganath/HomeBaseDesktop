@@ -2,7 +2,9 @@ import type { FastifyBaseLogger } from 'fastify';
 import { z } from 'zod';
 import type { Env } from '../env.js';
 import type { EventBus } from '../events.js';
+import { haversineMiles, milesTo } from '../lib/geo.js';
 import { safeFetchJson } from '../security/safeFetch.js';
+import type { RouteLookupService } from './routeLookup.js';
 
 /**
  * Adapter for the plane-tracker-rgb-pi web UI (Flask on the LED Pi).
@@ -105,6 +107,8 @@ export interface Flight {
   origin: { code: string; name: string; lat: number | null; lon: number | null; distance: number | null; delay: DelayLevel };
   destination: { code: string; name: string; lat: number | null; lon: number | null; distance: number | null; delay: DelayLevel };
   progress: number | null; // 0..1 along the route
+  /** Where the route came from: the tracker's lookup (FR24 etc.), adsbdb's schedule data, or nobody. */
+  routeSource: 'tracker' | 'schedule' | null;
   position: { lat: number | null; lon: number | null; altitudeFt: number | null; headingDeg: number | null; verticalFpm: number | null; groundSpeedKt: number | null };
   fromHome: { distance: number | null; direction: string };
   times: { scheduledDeparture: number | null; actualDeparture: number | null; scheduledArrival: number | null; estimatedArrival: number | null };
@@ -178,11 +182,18 @@ export class TrackerService {
   private lastSerialized = '';
   private stopped = false;
 
+  private polling = false;
+  private readonly routes: RouteLookupService | undefined;
+  private readonly units: () => 'imperial' | 'metric';
+
   constructor(
     private readonly env: Env,
     private readonly bus: EventBus,
     private readonly log: FastifyBaseLogger,
+    opts: { routes?: RouteLookupService; units?: () => 'imperial' | 'metric' } = {},
   ) {
+    this.routes = opts.routes;
+    this.units = opts.units ?? (() => env.UNITS);
     this.host = env.TRACKER_URL ? new URL(env.TRACKER_URL).hostname : '';
     this.state = {
       enabled: env.TRACKER_URL !== '',
@@ -240,6 +251,9 @@ export class TrackerService {
   }
 
   private async pollFlights(): Promise<void> {
+    // A slow route lookup must not stack polls on top of each other.
+    if (this.polling) return;
+    this.polling = true;
     try {
       const [overheadRaw, trackedRaw] = await Promise.all([
         this.get(TRACKER_ENDPOINTS.overhead),
@@ -252,6 +266,7 @@ export class TrackerService {
         .map((r) => r.data);
       await this.ensureAirports(parsed.flatMap((p) => [p.origin, p.destination]));
       const flights = parsed.filter((p) => p.callsign !== '').map((p) => this.normalize(p));
+      await this.fillMissingRoutes(flights);
 
       const trackedParsed = trackedSchema.safeParse(trackedRaw);
       const tracked =
@@ -263,7 +278,54 @@ export class TrackerService {
     } catch (err) {
       if (this.state.reachable) this.log.warn({ err: String(err) }, 'tracker unreachable');
       this.update({ reachable: false });
+    } finally {
+      this.polling = false;
     }
+  }
+
+  /**
+   * The tracker had no route (its FR24/AirLabs/FlightAware lookup found
+   * nothing): use adsbdb's schedule route for the callsign, free and cached,
+   * if the plane is plausibly on it. Also fills in the aircraft type.
+   */
+  private async fillMissingRoutes(flights: Flight[]): Promise<void> {
+    const routes = this.routes;
+    if (!routes) return;
+    const units = this.units();
+    await Promise.all(
+      flights.map(async (f) => {
+        if (!f.aircraftCode && f.icao24) {
+          const a = await routes.airframe(f.icao24).catch(() => null);
+          if (a?.icaoType) {
+            f.aircraftCode = a.icaoType;
+            f.aircraftName = this.aircraftTypes.get(a.icaoType) ?? a.type;
+          }
+        }
+        if (f.routeSource !== null || !/^[A-Z]{3}\d/.test(f.callsign)) return;
+        const r = await routes.route(f.callsign).catch(() => null);
+        const { lat, lon } = f.position;
+        if (!r?.origin.code || !r.destination.code || lat === null || lon === null) return;
+        const o = r.origin;
+        const d = r.destination;
+        let dO: number | null = null;
+        let dD: number | null = null;
+        if (o.lat !== null && o.lon !== null && d.lat !== null && d.lon !== null) {
+          const toO = haversineMiles(lat, lon, o.lat, o.lon);
+          const toD = haversineMiles(lat, lon, d.lat, d.lon);
+          // Same check as the tracker's: the plane must be roughly between the two airports.
+          if (toO + toD > haversineMiles(o.lat, o.lon, d.lat, d.lon) * 1.25) return;
+          dO = Math.round(milesTo(units, toO));
+          dD = Math.round(milesTo(units, toD));
+        }
+        f.origin = { ...f.origin, code: o.code, name: shortAirportName(o.name) || o.city, lat: o.lat, lon: o.lon, distance: dO };
+        f.destination = { ...f.destination, code: d.code, name: shortAirportName(d.name) || d.city, lat: d.lat, lon: d.lon, distance: dD };
+        f.progress = dO !== null && dD !== null && dO + dD > 0 ? dO / (dO + dD) : null;
+        if (!f.airline && r.airline?.name) f.airline = r.airline.name;
+        const digits = /\d+[A-Z]?$/.exec(f.callsign)?.[0] ?? '';
+        if (!f.flightNumber && r.airline?.iata && digits) f.flightNumber = `${r.airline.iata} ${digits}`;
+        f.routeSource = 'schedule';
+      }),
+    );
   }
 
   private async pollWeatherAndClock(): Promise<void> {
@@ -368,6 +430,7 @@ export class TrackerService {
         delay: arrivalDelayLevel(p.time_estimated_arrival, p.time_scheduled_arrival),
       },
       progress,
+      routeSource: p.origin && p.origin !== '?' && p.destination && p.destination !== '?' ? 'tracker' : null,
       position: {
         lat: p.plane_latitude,
         lon: p.plane_longitude,
