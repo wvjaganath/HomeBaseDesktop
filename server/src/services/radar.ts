@@ -3,7 +3,7 @@ import { z } from 'zod';
 import type { Env } from '../env.js';
 import type { EventBus } from '../events.js';
 import { bearingDeg, cardinal, haversineMiles, milesTo } from '../lib/geo.js';
-import { safeFetchJson } from '../security/safeFetch.js';
+import { FetchError, safeFetchJson } from '../security/safeFetch.js';
 import { HomeLocation } from './home.js';
 import { settingsFromEnv, type SettingsView } from './hubSettings.js';
 
@@ -15,6 +15,7 @@ import { settingsFromEnv, type SettingsView } from './hubSettings.js';
  * Polling is demand-driven: it runs only while a screen has asked for radar
  * data in the last two minutes, so an idle hub makes no requests.
  */
+const RATE_LIMIT_PAUSE_MS = 10 * 60_000;
 const PROVIDERS = [
   { name: 'adsb.lol', host: 'api.adsb.lol', url: (lat: number, lon: number, nm: number) => `https://api.adsb.lol/v2/lat/${lat}/lon/${lon}/dist/${nm}` },
   { name: 'adsb.fi', host: 'opendata.adsb.fi', url: (lat: number, lon: number, nm: number) => `https://opendata.adsb.fi/api/v3/lat/${lat}/lon/${lon}/dist/${nm}` },
@@ -86,6 +87,7 @@ export class RadarService {
   private lastDemand = 0;
   private trails = new Map<string, Array<{ lat: number; lon: number; t: number }>>();
   private inFlight = false;
+  private pausedUntil = new Map<string, number>();
 
   private readonly settings: SettingsView;
   private readonly homeLoc: HomeLocation;
@@ -180,7 +182,12 @@ export class RadarService {
     const lat = Number(home.lat.toFixed(4));
     const lon = Number(home.lon.toFixed(4));
     let lastErr: unknown = null;
+    const now = Date.now();
     for (const p of PROVIDERS) {
+      // A provider that said "too many requests" is left alone for a while, so this
+      // hub doesn't keep the home's address over its limit (the plane tracker uses
+      // adsb.lol from the same address and would be refused too).
+      if ((this.pausedUntil.get(p.name) ?? 0) > now) continue;
       try {
         const raw = await safeFetchJson(p.url(lat, lon, this.snapshotData.radiusNm), {
           allowHosts: [p.host],
@@ -192,8 +199,13 @@ export class RadarService {
         return;
       } catch (err) {
         lastErr = err;
+        if (err instanceof FetchError && err.status === 429) {
+          this.pausedUntil.set(p.name, now + RATE_LIMIT_PAUSE_MS);
+          this.log.info({ provider: p.name }, `radar: ${p.name} says too many requests; pausing it for 10 minutes`);
+        }
       }
     }
+    if (lastErr === null) return; // every provider is paused: wait
     throw lastErr instanceof Error ? lastErr : new Error('all ADS-B providers failed');
   }
 

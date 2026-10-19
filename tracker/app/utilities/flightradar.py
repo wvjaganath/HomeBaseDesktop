@@ -28,6 +28,7 @@ from utilities.airports import icao_to_iata as _icao_to_iata
 from utilities.airlines import get_airline_name as _lookup_airline
 
 _cache    = {}
+_warned_no_key = False  # HomeBase patch
 CACHE_TTL = 3600  # 1 hour
 MISS_TTL  = 120   # HomeBase patch: "no flights yet" (e.g. just took off) is retried after 2 minutes
 
@@ -57,6 +58,11 @@ class FR24Client:
     def get_flight_details(self, callsign, plane_lat, plane_lon,
                            plane_type="", registration="", distance=0.0):
         if not FR24_API_KEY:
+            # HomeBase patch: say so (once) instead of failing silently.
+            global _warned_no_key
+            if not _warned_no_key:
+                print("[FR24] No FlightRadar24 key loaded; restart the tracker after adding one")
+                _warned_no_key = True
             return {}
 
         now = time()
@@ -94,6 +100,7 @@ class FR24Client:
 
             flights = r.json().get("data", [])
             if not flights:
+                print(f"[FR24] {callsign}: FR24 found no flight with this callsign")  # HomeBase patch
                 _cache[callsign] = {"data": {}, "ts": now}
                 return {}
 

@@ -26,7 +26,7 @@ Kept to a minimum so updating stays easy (each change is marked `HomeBase` in th
 | `utilities/routelookup.py` | A cached "route not found" keeps the plane | Upstream caches a failed lookup as `{}`, and `overhead.py` then drops that plane for an hour, so a plane in your box vanished from every board. It now gets the same "route unknown" entry as on the first miss. |
 | `utilities/routelookup.py`, `utilities/flightradar.py` | A route nobody knew is retried after 2 minutes (`MISS_TTL`), not an hour | A plane first seen just after takeoff often isn't in FR24's flight summary yet; upstream then never showed its route. |
 | `utilities/overhead.py` | Reuses a plane's cached details only when they have a route; adds `ground_speed` to each in-box entry | So the retry above reaches a plane that stays in the box, and the speed can be shown. |
-| `utilities/flightradar.py` | Logs FR24's HTTP status when a lookup fails | Upstream returned nothing silently, so a bad key or used-up credits couldn't be seen in `docker compose logs tracker`. |
+| `utilities/flightradar.py` | Logs why a lookup found nothing: FR24's HTTP status, "no flight with this callsign", or no key loaded | Upstream returned nothing silently, so a bad key or used-up credits couldn't be seen in `docker compose logs tracker`. |
 | `logos/` | Only `default.png` | The server draws nothing; the LED board has its own logo set. |
 | `fonts/` | Not copied | The headless stand-in doesn't read fonts. |
 
