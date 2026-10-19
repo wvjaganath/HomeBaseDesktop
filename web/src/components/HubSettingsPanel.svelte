@@ -16,6 +16,7 @@
     refreshTokenTtlDays: number;
     radarEnabled: boolean;
     radarRadiusNm: number;
+    homeRadarMi: 5 | 8 | 10 | 15 | 25;
     adsbContact: string;
     ledBoardUrl: string;
     backupKeep: number;
@@ -159,7 +160,8 @@
         <legend>Radar &amp; maps</legend>
         <label class="check"><input type="checkbox" bind:checked={form.radarEnabled} /> Show live aircraft on the Radar tab</label>
         <div class="grid">
-          <label class="field" class:bad={bad === 'radarRadiusNm'}><span>Radar range (nautical miles)</span><input type="number" min="5" max="100" bind:value={form.radarRadiusNm} /></label>
+          <label class="field" class:bad={bad === 'radarRadiusNm'}><span>Radar range (nautical miles)</span><input type="number" min="5" max="100" bind:value={form.radarRadiusNm} /><small>For the Radar tab.</small></label>
+          <label class="field" class:bad={bad === 'homeRadarMi'}><span>Home radar range</span><select bind:value={form.homeRadarMi}>{#each [5, 8, 10, 15, 25] as mi (mi)}<option value={mi}>{mi} miles</option>{/each}</select><small>The small radar on Home. Shorter keeps a busy airport nearby from crowding it.</small></label>
           <label class="field" class:bad={bad === 'adsbContact'}><span>Contact for the ADS-B feeds</span><input type="text" maxlength="200" autocomplete="off" placeholder="you@example.com" bind:value={form.adsbContact} /><small>Sent to adsb.lol / adsb.fi so they can reach you. Optional.</small></label>
         </div>
         <div class="field" class:bad={bad === 'cartoApiKey'}>

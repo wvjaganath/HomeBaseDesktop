@@ -20,7 +20,10 @@
   const flights = $derived(hub.tracker?.flights ?? []);
   const focus = $derived(autoFocus && flights.length > 0 ? flights[0] : undefined);
   const units = $derived(hub.config?.units ?? 'imperial');
-  const radarCount = $derived(hub.radar?.aircraft.filter((a) => a.distance <= (units === 'metric' ? 40 : 25)).length ?? 0);
+  // The Home radar's reach (Settings → Hub), in miles; plane distances come in the screen's units.
+  const homeMi = $derived(hub.config?.homeRadarMi ?? 10);
+  const reach = $derived(units === 'metric' ? Math.round(homeMi * 1.609344) : homeMi);
+  const radarCount = $derived(hub.radar?.aircraft.filter((a) => a.distance <= reach).length ?? 0);
 </script>
 
 <div class="home">
@@ -46,7 +49,7 @@
           {#await import('../components/MiniRadar.svelte')}
             <div class="radar-wait" style:width="220px" style:height="220px"></div>
           {:then { default: MiniRadar }}
-            <MiniRadar size={220} radiusMi={25} />
+            <MiniRadar size={220} radiusMi={homeMi} />
           {/await}
           <div class="skytext">
             <span class="label accent"><Icon name="plane" size={20} />Sky</span>
@@ -55,7 +58,7 @@
               <span class="muted">Set the home location in Settings → Plane tracker → Location.</span>
             {:else}
               <span class="big">No plane in your box</span>
-              <span class="muted">{radarCount} aircraft within {units === 'metric' ? 40 : 25} {distUnit(units)}</span>
+              <span class="muted">{radarCount} aircraft within {reach} {distUnit(units)}</span>
             {/if}
             <span class="credit">Map © OpenStreetMap contributors © CARTO · Aircraft: adsb.lol / adsb.fi</span>
           </div>

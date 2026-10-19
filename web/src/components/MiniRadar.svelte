@@ -24,7 +24,9 @@
   const known = (h: { lat: number; lon: number } | undefined | null): h is { lat: number; lon: number } => !!h && !(h.lat === 0 && h.lon === 0);
   const home = $derived(known(hub.radar?.home) ? hub.radar.home : known(hub.config?.home) ? hub.config.home : null);
   const overheadCallsigns = $derived(new Set((hub.tracker?.flights ?? []).map((f) => f.callsign)));
-  const aircraft = $derived(hub.radar?.aircraft ?? []);
+  // Only what's inside the circle (distances come in the screen's units): less to draw on the Pi.
+  const reach = $derived((hub.config?.units ?? 'imperial') === 'metric' ? radiusMi * 1.609344 : radiusMi);
+  const aircraft = $derived((hub.radar?.aircraft ?? []).filter((a) => a.distance <= reach * 1.05));
   const count = $derived(aircraft.length);
 
   onMount(() => {

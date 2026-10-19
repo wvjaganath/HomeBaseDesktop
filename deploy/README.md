@@ -74,7 +74,7 @@ Check: `curl http://<pc-ip>:3000/health` → `{"ok":true}`.
 
 | Where | What |
 |---|---|
-| **Settings → Hub** (browser) | Sign-up on/off, how long sign-ins last, radar on/off and range, ADS-B contact, the CARTO map key, the LED board's address, backups, log detail. Saved on the hub, applied straight away. |
+| **Settings → Hub** (browser) | Sign-up on/off, how long sign-ins last, radar on/off and range, the Home radar's range, ADS-B contact, the CARTO map key, the LED board's address, backups, log detail. Saved on the hub, applied straight away. |
 | **Settings → Plane tracker** (browser) | Home location, units, zone, flights, API keys… The radar, maps and MagicMirror use this home location and units too, so they're set once. |
 | `deploy/hub.env` | `JWT_SECRET` only (plus the optional `SECRETS_KEY`). They sign sign-ins and encrypt saved secrets, so they can't be stored in the database they protect. |
 | `deploy/.env` | Docker-level: ports (`HTTPS_PORT`, `HTTP_PORT`, `TRACKER_FEED_PORT`), `HUB_HOSTS`, the time zone `TZ` (every container), image versions, `LOGOS_COMMIT`. A running app can't change these. |

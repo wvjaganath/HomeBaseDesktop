@@ -61,6 +61,8 @@ export const hubSettingsSchema = z.strictObject({
   refreshTokenTtlDays: z.number().int().min(1).max(90),
   radarEnabled: z.boolean(),
   radarRadiusNm: z.number().int().min(5).max(100),
+  /** How far the small radar on Home reaches, in miles (the Radar tab keeps the full range). */
+  homeRadarMi: z.union([z.literal(5), z.literal(8), z.literal(10), z.literal(15), z.literal(25)]),
   // Shown to the ADS-B feeds in the User-Agent, so they can reach you.
   adsbContact: z
     .string()
@@ -122,6 +124,7 @@ function fromEnv(env: Env): HubSettings {
     refreshTokenTtlDays: env.REFRESH_TOKEN_TTL_DAYS,
     radarEnabled: env.RADAR_ENABLED,
     radarRadiusNm: env.RADAR_RADIUS_NM,
+    homeRadarMi: 10,
     adsbContact: contact.success ? contact.data : '',
     ledBoardUrl: board.success ? board.data : '',
     backupKeep: env.BACKUP_KEEP,

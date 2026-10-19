@@ -142,6 +142,8 @@ export interface HubConfig {
   timezone: string;
   home: { lat: number; lon: number };
   radarRadiusNm: number;
+  /** Reach of the small radar on Home, in miles. */
+  homeRadarMi?: number;
   trackerEnabled: boolean;
   /** The tracker runs on this server (docker compose). */
   trackerBundled?: boolean;
