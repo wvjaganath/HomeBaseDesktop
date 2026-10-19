@@ -74,7 +74,7 @@ Check: `curl http://<pc-ip>:3000/health` → `{"ok":true}`.
 
 | Where | What |
 |---|---|
-| **Settings → Hub** (browser) | Sign-up on/off, how long sign-ins last, radar on/off, area (the tracker's box or a circle), range and how often it asks for planes, the Home radar's range, ADS-B contact, the CARTO map key, the LED board's address, backups, log detail. Saved on the hub, applied straight away. |
+| **Settings → Hub** (browser) | Sign-up on/off, how long sign-ins last, radar on/off, range and how often it asks for planes, ADS-B contact, the CARTO map key, the LED board's address, backups, log detail. Saved on the hub, applied straight away. |
 | **Settings → Plane tracker** (browser) | Home location, units, zone, flights, API keys… The radar, maps and MagicMirror use this home location and units too, so they're set once. |
 | `deploy/hub.env` | `JWT_SECRET` only (plus the optional `SECRETS_KEY`). They sign sign-ins and encrypt saved secrets, so they can't be stored in the database they protect. |
 | `deploy/.env` | Docker-level: ports (`HTTPS_PORT`, `HTTP_PORT`, `TRACKER_FEED_PORT`), `HUB_HOSTS`, the time zone `TZ` (every container), image versions, `LOGOS_COMMIT`. A running app can't change these. |
@@ -103,7 +103,7 @@ personal, non-commercial use on a home network.
 | Service | Used by | Terms that apply | How HomeBase keeps to them |
 |---|---|---|---|
 | **Flightradar24 API** (your key) | tracker: route lookups, Track a flight, route search | Paid plan; personal or commercial use allowed; no reselling or redistributing raw data; data may be cached only "for a limited time as documented per endpoint" and no "persistent local copies" (T&C 2.4, 6.3.1) | Official API with your key, ~1 call per new flight (routes are remembered 1 hour, in memory). The tracker's own logs (flight counts, closest/farthest records, API log) keep route codes on disk: set **Flight log retention** in Plane tracker → Stats logging if you want them limited. |
-| **adsb.lol** | tracker every 30 s; the hub's radar every 15 s (Settings → Hub) while a screen shows it, only the area around the tracker's box | Free, no key yet; data under ODbL (credit it); dynamic rate limits | Credited on every map/list that shows its data. |
+| **adsb.lol** | tracker every 30 s; the hub's radar every 15 s (Settings → Hub) while a screen shows it | Free, no key yet; data under ODbL (credit it); dynamic rate limits | Credited on every map/list that shows its data. |
 | **adsb.fi** | Radar backup only | Personal, non-commercial only; max 1 request/second; cite adsb.fi with a link | Only when adsb.lol fails or has asked the hub to slow down (then for 10 minutes), ≤ 1 per 5 s; linked credit on the Radar map. |
 | **OpenSky** (anonymous) | tracker backup only, when adsb.lol fails | 400 credits/day without an account; non-commercial | Pauses for as long as OpenSky asks once the allowance is used (patch). |
 | **CARTO** basemaps (your key) | maps in the browser | Free non-commercial ≤ 5M tiles/month; **no server-side proxying or caching**; browser cache ≤ 30 days; prominent OpenStreetMap + CARTO credit | Tiles load straight from CARTO in the browser; readable credit on every map. |

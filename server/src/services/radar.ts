@@ -4,7 +4,7 @@ import type { Env } from '../env.js';
 import type { EventBus } from '../events.js';
 import { bearingDeg, cardinal, haversineMiles, milesTo } from '../lib/geo.js';
 import { FetchError, safeFetchJson } from '../security/safeFetch.js';
-import { HomeLocation, type Zone } from './home.js';
+import { HomeLocation } from './home.js';
 import { settingsFromEnv, type SettingsView } from './hubSettings.js';
 
 /**
@@ -75,18 +75,8 @@ export interface RadarSnapshot {
   updatedAt: string | null;
   home: { lat: number; lon: number };
   radiusNm: number;
-  /** When set, only planes inside the plane tracker's box are fetched and shown. */
-  area: Zone | null;
   units: 'imperial' | 'metric';
   aircraft: RadarAircraft[];
-}
-
-/** The smallest circle around a box (centre and radius in nautical miles), for the feeds' lat/lon/dist query. */
-export function circleAround(z: Zone): { lat: number; lon: number; nm: number } {
-  const lat = (z.top + z.bottom) / 2;
-  const lon = (z.left + z.right) / 2;
-  const miles = Math.max(haversineMiles(lat, lon, z.top, z.left), haversineMiles(lat, lon, z.bottom, z.right));
-  return { lat, lon, nm: Math.min(100, Math.max(1, Math.ceil(miles / 1.150779 + 0.5))) };
 }
 
 export class RadarService {
@@ -113,7 +103,7 @@ export class RadarService {
   }
 
   /** Enabled / home / range / units as the settings say right now. */
-  private state(): Pick<RadarSnapshot, 'enabled' | 'off' | 'home' | 'radiusNm' | 'area' | 'units'> {
+  private state(): Pick<RadarSnapshot, 'enabled' | 'off' | 'home' | 'radiusNm' | 'units'> {
     const s = this.settings();
     const home = this.homeLoc.get();
     return {
@@ -121,7 +111,6 @@ export class RadarService {
       off: !s.radarEnabled ? 'disabled' : home ? null : 'no_home',
       home: home ?? { lat: 0, lon: 0 },
       radiusNm: s.radarRadiusNm,
-      area: s.radarArea === 'box' ? this.homeLoc.zone : null,
       units: this.homeLoc.units,
     };
   }
@@ -130,12 +119,7 @@ export class RadarService {
   reconfigure(): void {
     const next = this.state();
     const prev = this.snapshotData;
-    const moved =
-      next.home.lat !== prev.home.lat ||
-      next.home.lon !== prev.home.lon ||
-      next.radiusNm !== prev.radiusNm ||
-      next.units !== prev.units ||
-      JSON.stringify(next.area) !== JSON.stringify(prev.area);
+    const moved = next.home.lat !== prev.home.lat || next.home.lon !== prev.home.lon || next.radiusNm !== prev.radiusNm || next.units !== prev.units;
     if (!moved && next.enabled === prev.enabled) return;
     if (moved) this.trails.clear();
     this.snapshotData = { ...prev, ...next, ...(moved || !next.enabled ? { aircraft: [], updatedAt: null, source: null } : {}) };
@@ -192,11 +176,8 @@ export class RadarService {
   private async poll(): Promise<void> {
     const home = this.homeLoc.get();
     if (!home || !this.snapshotData.enabled) return;
-    // Box mode: just the circle around the plane tracker's box. Otherwise the range around home.
-    const area = this.snapshotData.area;
-    const q = area ? circleAround(area) : { lat: home.lat, lon: home.lon, nm: this.snapshotData.radiusNm };
-    const lat = Number(q.lat.toFixed(4));
-    const lon = Number(q.lon.toFixed(4));
+    const lat = Number(home.lat.toFixed(4));
+    const lon = Number(home.lon.toFixed(4));
     let lastErr: unknown = null;
     const now = Date.now();
     for (const p of PROVIDERS) {
@@ -205,7 +186,7 @@ export class RadarService {
       // adsb.lol from the same address and would be refused too).
       if ((this.pausedUntil.get(p.name) ?? 0) > now) continue;
       try {
-        const raw = await safeFetchJson(p.url(lat, lon, q.nm), {
+        const raw = await safeFetchJson(p.url(lat, lon, this.snapshotData.radiusNm), {
           allowHosts: [p.host],
           timeoutMs: 6_000,
           maxBytes: 4 * 1024 * 1024,
@@ -240,8 +221,6 @@ export class RadarService {
       const { lat, lon } = a;
       if (lat === undefined || lon === undefined) continue;
       if (a.seen_pos !== undefined && a.seen_pos > 60) continue;
-      const area = this.snapshotData.area;
-      if (area && !(lat <= area.top && lat >= area.bottom && lon >= area.left && lon <= area.right)) continue;
       const hex = a.hex.replace('~', '').toLowerCase();
       seen.add(hex);
 

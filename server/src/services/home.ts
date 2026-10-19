@@ -8,29 +8,10 @@ export interface Home {
   lon: number;
 }
 export type HomeSource = 'tracker' | 'settings' | null;
-/** The plane tracker's box (its zone_home): planes inside it are "overhead". */
-export interface Zone {
-  top: number;
-  left: number;
-  bottom: number;
-  right: number;
-}
 export type Units = 'imperial' | 'metric';
 
 const REFRESH_MS = 5 * 60_000;
 const RETRY_MS = 30_000; // until the tracker has answered once (it may still be starting)
-/** A usable box: real numbers, top above bottom, left west of right, and not absurdly big. */
-export function parseZone(z: unknown): Zone | null {
-  if (typeof z !== 'object' || z === null) return null;
-  const { tl_y: top, tl_x: left, br_y: bottom, br_x: right } = z as Record<string, unknown>;
-  const nums = [top, left, bottom, right];
-  if (!nums.every((n) => typeof n === 'number' && Number.isFinite(n))) return null;
-  const [t, l, b, r] = nums as [number, number, number, number];
-  if (Math.abs(t) > 90 || Math.abs(b) > 90 || Math.abs(l) > 180 || Math.abs(r) > 180) return null;
-  if (!(t > b && r > l) || t - b > 5 || r - l > 5) return null;
-  return { top: t, left: l, bottom: b, right: r };
-}
-
 const valid = (lat: unknown, lon: unknown): lat is number =>
   typeof lat === 'number' && typeof lon === 'number' && Number.isFinite(lat) && Number.isFinite(lon) && Math.abs(lat) <= 90 && Math.abs(lon) <= 180 && !(lat === 0 && lon === 0);
 
@@ -42,7 +23,7 @@ const valid = (lat: unknown, lon: unknown): lat is number =>
  * hub's own Settings → General values are used.
  */
 export class HomeLocation {
-  private fromTracker: { home: Home | null; units: Units | null; zone: Zone | null } = { home: null, units: null, zone: null };
+  private fromTracker: { home: Home | null; units: Units | null } = { home: null, units: null };
   private timer: NodeJS.Timeout | null = null;
   private stopped = false;
   private readonly listeners = new Set<() => void>();
@@ -72,11 +53,6 @@ export class HomeLocation {
     return this.fromTracker.units ?? this.settings().units;
   }
 
-  /** The plane tracker's box, when it has a valid one. */
-  get zone(): Zone | null {
-    return this.fromTracker.zone;
-  }
-
   get source(): HomeSource {
     if (this.fromTracker.home) return 'tracker';
     return this.settings().home ? 'settings' : null;
@@ -84,8 +60,7 @@ export class HomeLocation {
 
   private key(): string {
     const h = this.get();
-    const z = this.zone;
-    return `${h ? `${h.lat},${h.lon}` : '-'}|${this.units}|${z ? `${z.top},${z.left},${z.bottom},${z.right}` : '-'}`;
+    return `${h ? `${h.lat},${h.lon}` : '-'}|${this.units}`;
   }
 
   /** Called when home or units change. */
@@ -113,7 +88,7 @@ export class HomeLocation {
       // The tracker also has "nautical"; the screens show miles for that.
       const units: Units | null = loc.distance_units === 'metric' ? 'metric' : loc.distance_units === 'imperial' || loc.distance_units === 'nautical' ? 'imperial' : null;
       const wasEmpty = !this.fromTracker.home;
-      this.fromTracker = { home, units, zone: parseZone(loc.zone_home) };
+      this.fromTracker = { home, units };
       if (home && wasEmpty) this.log?.info('home location taken from the plane tracker settings');
       this.notify();
     } catch {

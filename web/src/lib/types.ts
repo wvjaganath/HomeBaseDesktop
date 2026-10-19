@@ -83,13 +83,6 @@ export interface RadarAircraft {
   trail: Array<[number, number]>;
 }
 
-export interface RadarArea {
-  top: number;
-  left: number;
-  bottom: number;
-  right: number;
-}
-
 export interface RadarSnapshot {
   enabled: boolean;
   off?: 'disabled' | 'no_home' | null;
@@ -97,8 +90,6 @@ export interface RadarSnapshot {
   updatedAt: string | null;
   home: { lat: number; lon: number };
   radiusNm: number;
-  /** Set when the radar shows only the plane tracker's box. */
-  area?: RadarArea | null;
   units: 'imperial' | 'metric';
   aircraft: RadarAircraft[];
 }
@@ -151,8 +142,6 @@ export interface HubConfig {
   timezone: string;
   home: { lat: number; lon: number };
   radarRadiusNm: number;
-  /** Reach of the small radar on Home, in miles. */
-  homeRadarMi?: number;
   trackerEnabled: boolean;
   /** The tracker runs on this server (docker compose). */
   trackerBundled?: boolean;

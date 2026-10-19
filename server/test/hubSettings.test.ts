@@ -30,24 +30,15 @@ describe('hub settings (Settings → Hub)', () => {
     await app.close();
   });
 
-  it('has a Home radar range (default 10 mi, a few fixed choices), kept when older saved settings lack it', async () => {
+  it('asks for planes every 15 s by default; only a few intervals are allowed', async () => {
     const app = await testApp({});
-    const { bearer, cookie } = await signIn(app, 'r@example.com');
+    const { bearer, cookie } = await signIn(app, 'p@example.com');
     const cur = editable((await app.inject({ method: 'GET', url: '/api/hub-settings', headers: { authorization: bearer } })).json<View>().settings);
-    expect(cur.homeRadarMi).toBe(10);
-    const config = async (): Promise<Record<string, unknown>> => (await app.inject({ method: 'GET', url: '/api/config', headers: { authorization: bearer } })).json<Record<string, unknown>>();
-    expect(await config()).toMatchObject({ homeRadarMi: 10 });
-    const put = (homeRadarMi: unknown) => app.inject({ method: 'PUT', url: '/api/hub-settings', headers: { origin: ORIGIN, cookie }, payload: { ...cur, homeRadarMi } });
-    expect((await put(7)).statusCode).toBe(400);
-    expect((await put(5)).statusCode).toBe(200);
-    expect(await config()).toMatchObject({ homeRadarMi: 5 });
-    // A row saved by an older version has no homeRadarMi: it still loads, with the default.
-    const { homeRadarMi: _gone, ...older } = app.ctx.settings.values;
-    app.ctx.db.prepare(`UPDATE hub_settings SET value = ? WHERE key = 'settings'`).run(JSON.stringify(older));
-    const { HubSettingsService } = await import('../src/services/hubSettings.js');
-    const reloaded = new HubSettingsService(app.ctx.db, app.ctx.secretBox, app.ctx.env);
-    expect(reloaded.values.homeRadarMi).toBe(10);
-    expect(reloaded.values.radarRadiusNm).toBe(app.ctx.settings.values.radarRadiusNm);
+    expect(cur.radarPollSec).toBe(15);
+    const put = (radarPollSec: unknown) => app.inject({ method: 'PUT', url: '/api/hub-settings', headers: { origin: ORIGIN, cookie }, payload: { ...cur, radarPollSec } });
+    expect((await put(5)).statusCode).toBe(400);
+    expect((await put(30)).statusCode).toBe(200);
+    expect(app.ctx.settings.values.radarPollSec).toBe(30);
     await app.close();
   });
 

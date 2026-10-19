@@ -95,32 +95,25 @@
     map.on('dragstart', () => (follow = false));
   });
 
-  // The plane tracker's box (box mode) or range rings, and the home dot; re-frame when they change.
-  const area = $derived(hub.radar?.area ?? null);
+  // Range rings and the home dot; re-centre when home becomes known.
   let homeGroup: L.LayerGroup | null = null;
   let centred = '';
   $effect(() => {
     const m = map;
     const h = home;
-    const a = area;
     if (!m || !h) return;
-    const key = `${h.lat},${h.lon},${a ? `${a.top},${a.left},${a.bottom},${a.right}` : '-'}`;
+    const key = `${h.lat},${h.lon}`;
     if (key === centred) return;
     centred = key;
     homeGroup?.remove();
     const g = L.layerGroup();
-    if (a) {
-      L.rectangle([[a.bottom, a.left], [a.top, a.right]], { color: '#2dd4bf', opacity: 0.6, weight: 2, fill: false, dashArray: '6 6', interactive: false }).addTo(g);
-    } else {
-      for (const mi of [5, 10, 25]) {
-        L.circle([h.lat, h.lon], { radius: mi * MI_TO_M, color: '#223040', weight: 1.5, fill: false, interactive: false }).addTo(g);
-      }
+    for (const mi of [5, 10, 25]) {
+      L.circle([h.lat, h.lon], { radius: mi * MI_TO_M, color: '#223040', weight: 1.5, fill: false, interactive: false }).addTo(g);
     }
     L.circleMarker([h.lat, h.lon], { radius: 8, color: '#2dd4bf', fillColor: '#2dd4bf', fillOpacity: 1, weight: 0, interactive: false }).addTo(g);
     g.addTo(m);
     homeGroup = g;
-    if (a) m.fitBounds(L.latLngBounds([a.bottom, a.left], [a.top, a.right]).pad(0.15), { animate: false });
-    else m.setView([h.lat, h.lon], 10);
+    m.setView([h.lat, h.lon], 10);
   });
 
   // A new map key (Settings → Hub): load fresh tiles, not the browser's old ones.

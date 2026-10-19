@@ -24,11 +24,7 @@
   const known = (h: { lat: number; lon: number } | undefined | null): h is { lat: number; lon: number } => !!h && !(h.lat === 0 && h.lon === 0);
   const home = $derived(known(hub.radar?.home) ? hub.radar.home : known(hub.config?.home) ? hub.config.home : null);
   const overheadCallsigns = $derived(new Set((hub.tracker?.flights ?? []).map((f) => f.callsign)));
-  // Only what's inside the circle (distances come in the screen's units): less to draw on the Pi.
-  const reach = $derived((hub.config?.units ?? 'imperial') === 'metric' ? radiusMi * 1.609344 : radiusMi);
-  // Box mode (Settings → Hub → Radar area): the hub already sends only the planes inside the box.
-  const area = $derived(hub.radar?.area ?? null);
-  const aircraft = $derived(area ? (hub.radar?.aircraft ?? []) : (hub.radar?.aircraft ?? []).filter((a) => a.distance <= reach * 1.05));
+  const aircraft = $derived(hub.radar?.aircraft ?? []);
   const count = $derived(aircraft.length);
 
   onMount(() => {
@@ -67,38 +63,26 @@
     }
   });
 
-  // The box (or rings), the home dot, and framing: the box fits inside the circle.
+  // Rings and home dot; frame the chosen radius around home.
   let ringGroup: L.LayerGroup | null = null;
   let framed = '';
   $effect(() => {
     const m = map;
     const h = home;
-    const a = area;
     if (!m || !h) return;
-    const key = `${h.lat},${h.lon},${radiusMi},${a ? `${a.top},${a.left},${a.bottom},${a.right}` : '-'}`;
+    const key = `${h.lat},${h.lon},${radiusMi}`;
     if (key === framed) return;
     framed = key;
     ringGroup?.remove();
     const g = L.layerGroup();
-    if (a) {
-      L.rectangle([[a.bottom, a.left], [a.top, a.right]], { color: '#2dd4bf', opacity: 0.55, weight: 1.5, fill: false, interactive: false }).addTo(g);
-    } else {
-      for (const f of [0.33, 0.66, 1]) {
-        L.circle([h.lat, h.lon], { radius: radiusMi * f * MI_TO_M, color: '#2a3441', weight: 1.5, fill: false, interactive: false }).addTo(g);
-      }
+    for (const f of [0.33, 0.66, 1]) {
+      L.circle([h.lat, h.lon], { radius: radiusMi * f * MI_TO_M, color: '#2a3441', weight: 1.5, fill: false, interactive: false }).addTo(g);
     }
     L.circleMarker([h.lat, h.lon], { radius: 6, color: '#2dd4bf', fillColor: '#2dd4bf', fillOpacity: 1, weight: 0, interactive: false }).addTo(g);
     g.addTo(m);
     ringGroup = g;
     m.invalidateSize();
-    if (a) {
-      // A round map shows the box whole when it frames the circle through the box's corners.
-      const centre = L.latLng((a.top + a.bottom) / 2, (a.left + a.right) / 2);
-      const r = centre.distanceTo(L.latLng(a.top, a.left));
-      m.fitBounds(centre.toBounds(r * 2.1), { animate: false });
-    } else {
-      m.fitBounds(L.latLng(h.lat, h.lon).toBounds(radiusMi * 2 * MI_TO_M), { animate: false });
-    }
+    m.fitBounds(L.latLng(h.lat, h.lon).toBounds(radiusMi * 2 * MI_TO_M), { animate: false });
   });
 
   // New positions every update…

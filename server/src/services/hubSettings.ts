@@ -61,10 +61,6 @@ export const hubSettingsSchema = z.strictObject({
   refreshTokenTtlDays: z.number().int().min(1).max(90),
   radarEnabled: z.boolean(),
   radarRadiusNm: z.number().int().min(5).max(100),
-  /** How far the small radar on Home reaches, in miles (the Radar tab keeps the full range). */
-  homeRadarMi: z.union([z.literal(5), z.literal(8), z.literal(10), z.literal(15), z.literal(25)]),
-  /** box = only the plane tracker's box (when it has one); circle = radarRadiusNm around home. */
-  radarArea: z.enum(['box', 'circle']),
   /** Seconds between ADS-B requests while a screen shows the radar. */
   radarPollSec: z.union([z.literal(10), z.literal(15), z.literal(30), z.literal(60)]),
   // Shown to the ADS-B feeds in the User-Agent, so they can reach you.
@@ -128,8 +124,6 @@ function fromEnv(env: Env): HubSettings {
     refreshTokenTtlDays: env.REFRESH_TOKEN_TTL_DAYS,
     radarEnabled: env.RADAR_ENABLED,
     radarRadiusNm: env.RADAR_RADIUS_NM,
-    homeRadarMi: 10,
-    radarArea: 'box',
     radarPollSec: 15,
     adsbContact: contact.success ? contact.data : '',
     ledBoardUrl: board.success ? board.data : '',

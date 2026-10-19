@@ -20,7 +20,6 @@ export default async function dashboardRoutes(app: FastifyInstance): Promise<voi
     home: home.get() ?? { lat: 0, lon: 0 },
     homeSource: home.source,
     radarRadiusNm: settings.values.radarRadiusNm,
-    homeRadarMi: settings.values.homeRadarMi,
     trackerEnabled: env.TRACKER_URL !== '',
     trackerBundled: env.TRACKER_BUNDLED,
     radarEnabled: radar.snapshot.data.enabled,
