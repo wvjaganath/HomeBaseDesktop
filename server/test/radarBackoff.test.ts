@@ -18,7 +18,7 @@ beforeAll(() => {
       status: 200,
       headers: { 'content-type': 'application/json' },
     });
-  }) as typeof fetch;
+  });
 });
 afterAll(() => {
   globalThis.fetch = realFetch;
