@@ -17,6 +17,8 @@
     radarEnabled: boolean;
     radarRadiusNm: number;
     homeRadarMi: 5 | 8 | 10 | 15 | 25;
+    radarArea: 'box' | 'circle';
+    radarPollSec: 10 | 15 | 30 | 60;
     adsbContact: string;
     ledBoardUrl: string;
     backupKeep: number;
@@ -160,8 +162,10 @@
         <legend>Radar &amp; maps</legend>
         <label class="check"><input type="checkbox" bind:checked={form.radarEnabled} /> Show live aircraft on the Radar tab</label>
         <div class="grid">
-          <label class="field" class:bad={bad === 'radarRadiusNm'}><span>Radar range (nautical miles)</span><input type="number" min="5" max="100" bind:value={form.radarRadiusNm} /><small>For the Radar tab.</small></label>
-          <label class="field" class:bad={bad === 'homeRadarMi'}><span>Home radar range</span><select bind:value={form.homeRadarMi}>{#each [5, 8, 10, 15, 25] as mi (mi)}<option value={mi}>{mi} miles</option>{/each}</select><small>The small radar on Home. Shorter keeps a busy airport nearby from crowding it.</small></label>
+          <label class="field" class:bad={bad === 'radarArea'}><span>Radar area</span><select bind:value={form.radarArea}><option value="box">The plane tracker’s box only</option><option value="circle">A circle around home</option></select><small>The box is the top-left and bottom-right corners in Settings → Plane tracker → Location. Planes outside it aren’t fetched or shown. Without a box, the circle below is used.</small></label>
+          <label class="field" class:bad={bad === 'radarPollSec'}><span>Ask for planes every</span><select bind:value={form.radarPollSec}>{#each [10, 15, 30, 60] as sec (sec)}<option value={sec}>{sec} seconds</option>{/each}</select><small>Only while a screen shows Home, Flights or Radar. Planes glide in between. Longer is kinder to the free feeds.</small></label>
+          <label class="field" class:bad={bad === 'radarRadiusNm'}><span>Radar range (nautical miles)</span><input type="number" min="5" max="100" bind:value={form.radarRadiusNm} /><small>For the Radar tab, when the area is a circle.</small></label>
+          <label class="field" class:bad={bad === 'homeRadarMi'}><span>Home radar range</span><select bind:value={form.homeRadarMi}>{#each [5, 8, 10, 15, 25] as mi (mi)}<option value={mi}>{mi} miles</option>{/each}</select><small>The small radar on Home, when the area is a circle.</small></label>
           <label class="field" class:bad={bad === 'adsbContact'}><span>Contact for the ADS-B feeds</span><input type="text" maxlength="200" autocomplete="off" placeholder="you@example.com" bind:value={form.adsbContact} /><small>Sent to adsb.lol / adsb.fi so they can reach you. Optional.</small></label>
         </div>
         <div class="field" class:bad={bad === 'cartoApiKey'}>

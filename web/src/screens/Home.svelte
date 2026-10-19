@@ -23,7 +23,8 @@
   // The Home radar's reach (Settings → Hub), in miles; plane distances come in the screen's units.
   const homeMi = $derived(hub.config?.homeRadarMi ?? 10);
   const reach = $derived(units === 'metric' ? Math.round(homeMi * 1.609344) : homeMi);
-  const radarCount = $derived(hub.radar?.aircraft.filter((a) => a.distance <= reach).length ?? 0);
+  const inBox = $derived(!!hub.radar?.area);
+  const radarCount = $derived(inBox ? (hub.radar?.aircraft.length ?? 0) : (hub.radar?.aircraft.filter((a) => a.distance <= reach).length ?? 0));
 </script>
 
 <div class="home">
@@ -58,7 +59,7 @@
               <span class="muted">Set the home location in Settings → Plane tracker → Location.</span>
             {:else}
               <span class="big">No plane in your box</span>
-              <span class="muted">{radarCount} aircraft within {reach} {distUnit(units)}</span>
+              <span class="muted">{radarCount} aircraft {inBox ? 'in the box' : `within ${reach} ${distUnit(units)}`}</span>
             {/if}
             <span class="credit">Map © OpenStreetMap contributors © CARTO · Aircraft: adsb.lol / adsb.fi</span>
           </div>
