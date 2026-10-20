@@ -106,6 +106,18 @@ class FR24Client:
                 _cache[callsign] = {"data": {}, "ts": now}
                 return {}
 
+            # HomeBase patch: FR24's sandbox token answers every query with the same
+            # sample flights (e.g. SAS1415 ARN-CPH on 2023-01-27). Keep only answers
+            # for the callsign asked about, and say what's going on.
+            mine = [fl for fl in flights if str(fl.get("callsign") or "").strip().upper() == callsign.upper()]
+            if not mine:
+                other = flights[0].get("callsign") or flights[0].get("flight") or "?"
+                print(f"[FR24] {callsign}: FR24 answered about a different flight ({other}). "
+                      "That's what FR24's sandbox token does: use the production token from the FR24 API portal.")
+                _cache[callsign] = {"data": {}, "ts": now}
+                return {}
+            flights = mine
+
             # Prefer live flight (flight_ended=false), then most recent
             f = (
                 next((fl for fl in flights if not fl.get("flight_ended", True)), None)

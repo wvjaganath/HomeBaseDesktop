@@ -47,3 +47,13 @@ try:
     print(r.text[:1500].replace(fr.FR24_API_KEY, "[hidden]"))
 except requests.RequestException as e:
     sys.exit(f"--- request failed: {e}")
+try:
+    answered = {str(f.get("callsign") or "").strip().upper() for f in r.json().get("data", [])}
+except ValueError:
+    answered = set()
+if answered and callsign not in answered:
+    print(f"\n!!! FR24 answered about {', '.join(sorted(answered))}, not {callsign}. That's FR24's sandbox token "
+          "(fixed sample flights, no credits used). Put the production token from the FR24 API portal in "
+          "Settings -> Plane tracker -> API keys.")
+elif not answered and r.status_code == 200:
+    print(f"\nFR24 has no flight with callsign {callsign} in the last 12 hours.")
