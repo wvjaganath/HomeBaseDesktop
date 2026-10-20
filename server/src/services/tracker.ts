@@ -4,7 +4,7 @@ import type { Env } from '../env.js';
 import type { EventBus } from '../events.js';
 import { haversineMiles, milesTo } from '../lib/geo.js';
 import { safeFetchJson } from '../security/safeFetch.js';
-import type { RouteLookupService } from './routeLookup.js';
+import { routeFits, type RouteLookupService } from './routeLookup.js';
 
 /**
  * Adapter for the plane-tracker-rgb-pi web UI (Flask on the LED Pi).
@@ -303,26 +303,26 @@ export class TrackerService {
         }
         if (f.routeSource !== null || !/^[A-Z]{3}\d/.test(f.callsign)) return;
         const r = await routes.route(f.callsign).catch(() => null);
+        if (!r) return;
+        // The airline goes with the flight number, so it's right even when the usual route isn't.
+        if (!f.airline && r.airline?.name) f.airline = r.airline.name;
+        const digits = /\d+[A-Z]?$/.exec(f.callsign)?.[0] ?? '';
+        if (!f.flightNumber && r.airline?.iata && digits) f.flightNumber = `${r.airline.iata} ${digits}`;
         const { lat, lon } = f.position;
-        if (!r?.origin.code || !r.destination.code || lat === null || lon === null) return;
+        if (!r.origin.code || !r.destination.code || lat === null || lon === null) return;
+        // Same check as the tracker's: the plane must be roughly between the two airports.
+        if (routeFits(r, lat, lon) === false) return;
         const o = r.origin;
         const d = r.destination;
         let dO: number | null = null;
         let dD: number | null = null;
         if (o.lat !== null && o.lon !== null && d.lat !== null && d.lon !== null) {
-          const toO = haversineMiles(lat, lon, o.lat, o.lon);
-          const toD = haversineMiles(lat, lon, d.lat, d.lon);
-          // Same check as the tracker's: the plane must be roughly between the two airports.
-          if (toO + toD > haversineMiles(o.lat, o.lon, d.lat, d.lon) * 1.25) return;
-          dO = Math.round(milesTo(units, toO));
-          dD = Math.round(milesTo(units, toD));
+          dO = Math.round(milesTo(units, haversineMiles(lat, lon, o.lat, o.lon)));
+          dD = Math.round(milesTo(units, haversineMiles(lat, lon, d.lat, d.lon)));
         }
         f.origin = { ...f.origin, code: o.code, name: shortAirportName(o.name) || o.city, lat: o.lat, lon: o.lon, distance: dO };
         f.destination = { ...f.destination, code: d.code, name: shortAirportName(d.name) || d.city, lat: d.lat, lon: d.lon, distance: dD };
         f.progress = dO !== null && dD !== null && dO + dD > 0 ? dO / (dO + dD) : null;
-        if (!f.airline && r.airline?.name) f.airline = r.airline.name;
-        const digits = /\d+[A-Z]?$/.exec(f.callsign)?.[0] ?? '';
-        if (!f.flightNumber && r.airline?.iata && digits) f.flightNumber = `${r.airline.iata} ${digits}`;
         f.routeSource = 'schedule';
       }),
     );

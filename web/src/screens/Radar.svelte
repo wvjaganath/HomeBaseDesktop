@@ -18,6 +18,8 @@
       destination: { code: string; name: string; city: string };
     } | null;
     airframe: { type: string; manufacturer: string; registration: string; owner: string } | null;
+    /** false = adsbdb's usual route for the flight number can't be this plane's (it's elsewhere). */
+    routeFits?: boolean | null;
   }
 
   const MI_TO_M = 1609.344;
@@ -61,6 +63,10 @@
     aircraft.find((a) => a.hex === selectedHex) ?? aircraft.find((a) => overheadCallsigns.has(a.callsign)) ?? aircraft[0],
   );
   const trackerFlight = $derived(selected ? overhead.find((f) => f.callsign === selected.callsign) : undefined);
+  // The tracker's flight only counts for the route when it actually has one.
+  const trackerRoute = $derived(trackerFlight && (trackerFlight.origin.code || trackerFlight.destination.code) ? trackerFlight : undefined);
+  // adsbdb's usual route, only when the plane can be on it.
+  const scheduleRoute = $derived(details?.route && details.routeFits !== false ? details.route : null);
 
   // Home comes from the plane tracker's Location settings (or Settings → Hub), possibly later.
   const known = (h: { lat: number; lon: number } | undefined | null): h is { lat: number; lon: number } => !!h && !(h.lat === 0 && h.lon === 0);
@@ -213,7 +219,7 @@
   $effect(() => {
     const a = selected;
     details = null;
-    if (!a || trackerFlight) return;
+    if (!a || trackerRoute) return;
     let alive = true;
     const qs = a.callsign ? `?callsign=${encodeURIComponent(a.callsign)}` : '';
     api
@@ -285,14 +291,17 @@
         </div>
       </div>
 
-      {#if trackerFlight || details?.route}
-        {@const o = trackerFlight ? { code: trackerFlight.origin.code, name: trackerFlight.origin.name } : { code: details?.route?.origin.code ?? '', name: details?.route?.origin.city ?? '' }}
-        {@const d = trackerFlight ? { code: trackerFlight.destination.code, name: trackerFlight.destination.name } : { code: details?.route?.destination.code ?? '', name: details?.route?.destination.city ?? '' }}
+      {#if trackerRoute || scheduleRoute}
+        {@const o = trackerRoute ? { code: trackerRoute.origin.code, name: trackerRoute.origin.name } : { code: scheduleRoute?.origin.code ?? '', name: scheduleRoute?.origin.city ?? '' }}
+        {@const d = trackerRoute ? { code: trackerRoute.destination.code, name: trackerRoute.destination.name } : { code: scheduleRoute?.destination.code ?? '', name: scheduleRoute?.destination.city ?? '' }}
         <div class="route">
-          <div><span class="code" style:color={trackerFlight ? DELAY_COLORS[trackerFlight.origin.delay] : 'var(--text)'}>{o.code || '—'}</span><span class="muted">{o.name}</span></div>
+          <div><span class="code" style:color={trackerRoute ? DELAY_COLORS[trackerRoute.origin.delay] : 'var(--text)'}>{o.code || '—'}</span><span class="muted">{o.name}</span></div>
           <Icon name="right" size={28} />
-          <div class="r"><span class="code" style:color={trackerFlight ? DELAY_COLORS[trackerFlight.destination.delay] : 'var(--text)'}>{d.code || '—'}</span><span class="muted">{d.name}</span></div>
+          <div class="r"><span class="code" style:color={trackerRoute ? DELAY_COLORS[trackerRoute.destination.delay] : 'var(--text)'}>{d.code || '—'}</span><span class="muted">{d.name}</span></div>
         </div>
+        {#if !trackerRoute || trackerRoute.routeSource === 'schedule'}<p class="muted small">Usual route for this flight (adsbdb schedule data)</p>{/if}
+      {:else if details?.route && details.routeFits === false}
+        <p class="muted">Route unknown today: this flight number’s usual route ({details.route.origin.code} → {details.route.destination.code}) doesn’t match where the plane is.</p>
       {:else}
         <p class="muted">Route unknown for this flight.</p>
       {/if}

@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { CALENDAR_COLORS, calendarSourceInput } from '../services/calendar.js';
 import { openReminders, pinnedNotes } from '../services/lists.js';
-import { CALLSIGN_RE, HEX_RE } from '../services/routeLookup.js';
+import { CALLSIGN_RE, HEX_RE, routeFits } from '../services/routeLookup.js';
 
 /** CARTO Dark Matter raster tiles (Leaflet template), keyed when a key is saved. */
 export const cartoTileUrl = (key: string): string =>
@@ -50,7 +50,9 @@ export default async function dashboardRoutes(app: FastifyInstance): Promise<voi
         query.data.callsign ? routes.route(query.data.callsign).catch(() => null) : Promise.resolve(null),
         routes.airframe(params.data.hex).catch(() => null),
       ]);
-      return { route, airframe };
+      // Only a route the plane can be on is worth showing (see routeFits).
+      const plane = radar.snapshot.data.aircraft.find((a) => a.hex === params.data.hex);
+      return { route, airframe, routeFits: route && plane ? routeFits(route, plane.lat, plane.lon) : null };
     },
   );
 

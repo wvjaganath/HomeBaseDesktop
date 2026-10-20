@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type { Env } from '../env.js';
 import { settingsFromEnv, type SettingsView } from './hubSettings.js';
+import { haversineMiles } from '../lib/geo.js';
 import { safeFetchJson, FetchError } from '../security/safeFetch.js';
 
 /**
@@ -86,6 +87,18 @@ const airport = (a: z.infer<typeof airportSchema>): RouteInfo['origin'] => ({
   lat: a.latitude ?? null,
   lon: a.longitude ?? null,
 });
+
+/**
+ * Whether a plane at lat/lon can be on this route: roughly between the two
+ * airports (the tracker's own check). adsbdb's routes are the flight number's
+ * usual schedule, which is often a different leg that day. null = can't tell.
+ */
+export function routeFits(r: RouteInfo, lat: number | null, lon: number | null): boolean | null {
+  const o = r.origin;
+  const d = r.destination;
+  if (lat === null || lon === null || o.lat === null || o.lon === null || d.lat === null || d.lon === null) return null;
+  return haversineMiles(lat, lon, o.lat, o.lon) + haversineMiles(lat, lon, d.lat, d.lon) <= haversineMiles(o.lat, o.lon, d.lat, d.lon) * 1.25;
+}
 
 export class RouteLookupService {
   private routes = new TtlCache<RouteInfo | null>();

@@ -107,12 +107,13 @@ describe('TrackerService', () => {
     expect(private_?.routeSource).toBeNull(); // tail numbers aren't looked up
 
     // A schedule route the plane can't be on (Boston → New York over Chicago) is ignored.
-    known.UAL1234 = { airline: null, origin: { code: 'BOS', name: 'Logan', city: 'Boston', lat: 42.36, lon: -71.01 }, destination: { code: 'JFK', name: 'JFK', city: 'New York', lat: 40.64, lon: -73.78 } };
+    known.UAL1234 = { airline: { name: 'United Airlines', icao: 'UAL', iata: 'UA' }, origin: { code: 'BOS', name: 'Logan', city: 'Boston', lat: 42.36, lon: -71.01 }, destination: { code: 'JFK', name: 'JFK', city: 'New York', lat: 40.64, lon: -73.78 } };
     const again = new TrackerService(env, new EventBus(), log, { routes, units: () => 'imperial' });
     again.start();
     await new Promise((r) => setTimeout(r, 800));
     again.stop();
-    expect(again.snapshot.state.flights[1]).toMatchObject({ routeSource: null, origin: { code: '' } });
+    // …but the airline and flight number, which go with the callsign, are still shown.
+    expect(again.snapshot.state.flights[1]).toMatchObject({ routeSource: null, origin: { code: '' }, airline: 'United Airlines', flightNumber: 'UA 1234' });
   });
 
   it('only ever requests allow-listed read-only endpoints', () => {
