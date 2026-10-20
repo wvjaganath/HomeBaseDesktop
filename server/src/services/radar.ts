@@ -6,6 +6,11 @@ import { bearingDeg, cardinal, haversineMiles, milesTo } from '../lib/geo.js';
 import { FetchError, safeFetchJson } from '../security/safeFetch.js';
 import { HomeLocation } from './home.js';
 import { settingsFromEnv, type SettingsView } from './hubSettings.js';
+import { routeFits, type RouteLookupService } from './routeLookup.js';
+import type { Flight } from './tracker.js';
+
+/** New adsbdb route lookups started per update (cached 6 h), so a busy sky doesn't flood it. */
+const ROUTE_LOOKUPS_PER_POLL = 3;
 
 /**
  * Live aircraft around home from the free community ADS-B feeds.
@@ -65,6 +70,8 @@ export interface RadarAircraft {
   distance: number; // in env.UNITS (mi or km)
   direction: string;
   trail: Array<[number, number]>;
+  /** fr24 = the tracker's FR24 lookup (planes in the box); schedule = adsbdb's usual route, only when the plane fits it. */
+  route: { from: string; to: string; source: 'fr24' | 'schedule' } | null;
 }
 
 export interface RadarSnapshot {
@@ -96,6 +103,7 @@ export class RadarService {
     private readonly log: FastifyBaseLogger,
     homeLoc?: HomeLocation,
     settings?: SettingsView,
+    private readonly opts: { routes?: RouteLookupService; trackerFlights?: () => Flight[] } = {},
   ) {
     this.settings = settings ?? settingsFromEnv(env);
     this.homeLoc = homeLoc ?? new HomeLocation(env, undefined, this.settings);
@@ -165,6 +173,43 @@ export class RadarService {
         });
     };
     this.timer = setTimeout(tick, 0);
+  }
+
+  private routeLookups = new Set<string>();
+
+  /**
+   * From/to for each plane: the tracker's route for planes in the box, else
+   * adsbdb's usual route when the plane is between its airports. Missing
+   * routes are looked up a few at a time (closest first) for the next update.
+   */
+  private addRoutes(aircraft: RadarAircraft[]): void {
+    const tracked = new Map((this.opts.trackerFlights?.() ?? []).map((f) => [f.callsign, f]));
+    const routes = this.opts.routes;
+    let started = 0;
+    for (const a of aircraft) {
+      const f = tracked.get(a.callsign);
+      if (f?.origin.code && f.destination.code) {
+        a.route = { from: f.origin.code, to: f.destination.code, source: f.routeSource === 'tracker' ? 'fr24' : 'schedule' };
+        continue;
+      }
+      if (!routes || !/^[A-Z]{3}\d/.test(a.callsign)) continue;
+      const r = routes.peekRoute(a.callsign);
+      if (r === undefined) {
+        if (started < ROUTE_LOOKUPS_PER_POLL && !this.routeLookups.has(a.callsign)) {
+          started += 1;
+          const cs = a.callsign;
+          this.routeLookups.add(cs);
+          void routes
+            .route(cs)
+            .catch(() => null)
+            .finally(() => this.routeLookups.delete(cs));
+        }
+        continue;
+      }
+      if (r?.origin.code && r.destination.code && routeFits(r, a.lat, a.lon) !== false) {
+        a.route = { from: r.origin.code, to: r.destination.code, source: 'schedule' };
+      }
+    }
   }
 
   private userAgent(): string {
@@ -247,6 +292,7 @@ export class RadarService {
         distance: Math.round(milesTo(this.snapshotData.units, miles) * 10) / 10,
         direction: cardinal(bearingDeg(home.lat, home.lon, lat, lon)),
         trail: trail.map((pt) => [Number(pt.lat.toFixed(5)), Number(pt.lon.toFixed(5))] as [number, number]),
+        route: null,
       });
     }
 
@@ -255,6 +301,7 @@ export class RadarService {
     }
 
     aircraft.sort((x, y) => x.distance - y.distance);
+    this.addRoutes(aircraft);
     this.snapshotData = { ...this.snapshotData, source, updatedAt: new Date(now).toISOString(), aircraft };
     this.version += 1;
     this.bus.emit('radar', { version: this.version });

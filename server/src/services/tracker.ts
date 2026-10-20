@@ -59,6 +59,18 @@ const overheadEntrySchema = z.looseObject({
   time_scheduled_arrival: optNum,
   time_real_departure: optNum,
   time_estimated_arrival: optNum,
+  // HomeBase's tracker patch: more of FR24's flight summary (full).
+  fr24: z
+    .looseObject({
+      flight: optStr,
+      registration: optStr,
+      runway_takeoff: optStr,
+      planned_dest: optStr,
+      diverted: z.boolean().optional().catch(false),
+      circle_distance: optNum,
+    })
+    .optional()
+    .catch(undefined),
 });
 
 const weatherSchema = z.looseObject({
@@ -109,6 +121,8 @@ export interface Flight {
   progress: number | null; // 0..1 along the route
   /** Where the route came from: the tracker's lookup (FR24 etc.), adsbdb's schedule data, or nobody. */
   routeSource: 'tracker' | 'schedule' | null;
+  /** More from FR24's flight summary, when the tracker's lookup found the flight there. */
+  extra: { registration: string; runwayTakeoff: string; diverted: boolean; plannedDestination: string; tripKm: number | null } | null;
   position: { lat: number | null; lon: number | null; altitudeFt: number | null; headingDeg: number | null; verticalFpm: number | null; groundSpeedKt: number | null };
   fromHome: { distance: number | null; direction: string };
   times: { scheduledDeparture: number | null; actualDeparture: number | null; scheduledArrival: number | null; estimatedArrival: number | null };
@@ -400,6 +414,9 @@ export class TrackerService {
     const destInfo = this.airportNames.get(p.destination.toUpperCase()) ?? null;
     const digits = /\d+[A-Z]?$/.exec(p.callsign)?.[0] ?? '';
     const iata = p.owner_iata && p.owner_iata !== 'N/A' ? p.owner_iata : '';
+    // FR24's flight number ("UA1252") is the real one; show it as "UA 1252".
+    const fr24Flight = /^([A-Z0-9]{2})(\d{1,4}[A-Z]?)$/.exec(p.fr24?.flight ?? '');
+    const fx = p.fr24;
     const logoIcao = (p.owner_icao || p.callsign.slice(0, 3)).toUpperCase();
     // The tracker's stand-in when no source knew the route is "Private", "?" → "?".
     // For an airline callsign (three letters, then digits) that isn't true, so say nothing.
@@ -410,7 +427,7 @@ export class TrackerService {
       icao24: p.icao24.toLowerCase(),
       airline,
       logoIcao: /^[A-Z0-9]{2,4}$/.test(logoIcao) ? logoIcao : '',
-      flightNumber: iata && digits ? `${iata} ${digits}` : '',
+      flightNumber: fr24Flight ? `${fr24Flight[1]} ${fr24Flight[2]}` : iata && digits ? `${iata} ${digits}` : '',
       aircraftCode: p.plane,
       aircraftName: this.aircraftTypes.get(p.plane) ?? '',
       origin: {
@@ -431,6 +448,15 @@ export class TrackerService {
       },
       progress,
       routeSource: p.origin && p.origin !== '?' && p.destination && p.destination !== '?' ? 'tracker' : null,
+      extra: fx
+        ? {
+            registration: fx.registration.slice(0, 12),
+            runwayTakeoff: fx.runway_takeoff.slice(0, 6),
+            diverted: fx.diverted === true,
+            plannedDestination: /^[A-Z0-9]{3,4}$/.test(fx.planned_dest) ? fx.planned_dest : '',
+            tripKm: fx.circle_distance !== null && fx.circle_distance > 0 && fx.circle_distance < 20_000 ? Math.round(fx.circle_distance) : null,
+          }
+        : null,
       position: {
         lat: p.plane_latitude,
         lon: p.plane_longitude,

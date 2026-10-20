@@ -168,6 +168,7 @@ def _normalise(result, callsign, plane_lat, plane_lon, registration=""):
         "time_real_departure":      result.get("time_real_departure"),
         "time_estimated_arrival":   result.get("time_estimated_arrival"),
         "trail":                 result.get("trail", []),
+        "fr24":                  result.get("fr24") or {},  # HomeBase patch: extra FR24 details, passed on to /overhead/json
     }
 
 

@@ -1,6 +1,7 @@
 """
 flightradar.py — Route lookup via FlightRadar24 API.
-Uses flight-summary/light endpoint — 1 credit per live flight.
+Uses flight-summary/full (HomeBase patch; upstream used /light): 2 credits per flight
+returned, with IATA codes, the flight number, registration, runways and distances.
 Requires a paid FR24 subscription.
 
 Set in config.py:
@@ -73,11 +74,12 @@ class FR24Client:
         try:
             # Use a 12-hour window around now to catch the current flight
             now_utc   = datetime.now(timezone.utc)
-            from_utc  = (now_utc - timedelta(hours=12)).strftime("%Y-%m-%dT%H:%M:%S")
-            to_utc    = (now_utc + timedelta(hours=2)).strftime("%Y-%m-%dT%H:%M:%S")
+            # HomeBase patch: UTC times written with "Z", as FR24's examples are.
+            from_utc  = (now_utc - timedelta(hours=12)).strftime("%Y-%m-%dT%H:%M:%SZ")
+            to_utc    = (now_utc + timedelta(hours=2)).strftime("%Y-%m-%dT%H:%M:%SZ")
 
             r = requests.get(
-                f"{BASE_URL}/flight-summary/light",
+                f"{BASE_URL}/flight-summary/full",
                 headers={
                     "Accept": "application/json",
                     "Accept-Version": "v1",
@@ -87,7 +89,7 @@ class FR24Client:
                     "callsigns":            callsign,
                     "flight_datetime_from": from_utc,
                     "flight_datetime_to":   to_utc,
-                    "limit":                5,
+                    "limit":                2,  # HomeBase patch: credits are per flight returned
                     "sort":                 "desc",
                 },
                 timeout=10,
@@ -110,12 +112,13 @@ class FR24Client:
                 or flights[0]
             )
 
-            # light endpoint only has ICAO codes — convert to IATA via airports database
-            origin_icao = f.get("orig_icao", "")
-            dest_icao   = f.get("dest_icao_actual", "") or f.get("dest_icao", "")
+            # HomeBase patch: /full gives IATA codes; convert ICAO ones only when it doesn't.
+            origin_icao = f.get("orig_icao", "") or ""
+            dest_icao   = f.get("dest_icao_actual", "") or f.get("dest_icao", "") or ""
 
-            origin      = _icao_to_iata(origin_icao) if origin_icao else "?"
-            destination = _icao_to_iata(dest_icao)   if dest_icao   else "?"
+            origin      = f.get("orig_iata") or (_icao_to_iata(origin_icao) if origin_icao else "?")
+            destination = (f.get("dest_iata_actual") or f.get("dest_iata")
+                           or (_icao_to_iata(dest_icao) if dest_icao else "?"))
 
             painted_as   = f.get("painted_as", "")   # marketing brand e.g. "AAL"
             operating_as = f.get("operating_as", "") or f.get("operated_as", "")  # operator e.g. "ENY"
@@ -124,8 +127,8 @@ class FR24Client:
             airline_name = _lookup_airline(painted_as) or painted_as
             logo_icao    = operating_as or painted_as
 
-            origin_coords = _airport_coords(origin) or _airport_coords(origin_icao)
-            dest_coords   = _airport_coords(destination) or _airport_coords(dest_icao)
+            origin_coords = _airport_coords(origin) or _airport_coords(origin_icao) or {}
+            dest_coords   = _airport_coords(destination) or _airport_coords(dest_icao) or {}
 
             takeoff_ts = _to_unix(f.get("datetime_takeoff"))
             landed_ts  = _to_unix(f.get("datetime_landed"))
@@ -147,6 +150,18 @@ class FR24Client:
                 "time_real_departure":      takeoff_ts,
                 "time_estimated_arrival":   landed_ts,
                 "trail":        [],
+                # HomeBase patch: more of what /full returns, for HomeBase's screens.
+                "fr24": {
+                    "flight":          f.get("flight") or "",
+                    "registration":    f.get("reg") or "",
+                    "type":            f.get("type") or "",
+                    "runway_takeoff":  f.get("runway_takeoff") or "",
+                    "planned_dest":    f.get("dest_iata") or "",
+                    "diverted":        bool(f.get("dest_iata_actual") and f.get("dest_iata") and f.get("dest_iata_actual") != f.get("dest_iata")),
+                    "circle_distance": f.get("circle_distance"),
+                    "actual_distance": f.get("actual_distance"),
+                    "first_seen":      _to_unix(f.get("first_seen")),
+                },
             }
 
             _cache[callsign] = {"data": result, "ts": now}

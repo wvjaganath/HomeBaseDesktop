@@ -134,6 +134,11 @@ export class RouteLookupService {
     });
   }
 
+  /** The cached answer without asking adsbdb: undefined = not looked up yet. */
+  peekRoute(callsign: string): RouteInfo | null | undefined {
+    return CALLSIGN_RE.test(callsign) ? this.routes.get(callsign) : null;
+  }
+
   async route(callsign: string): Promise<RouteInfo | null> {
     if (!CALLSIGN_RE.test(callsign)) return null;
     const cached = this.routes.get(callsign);

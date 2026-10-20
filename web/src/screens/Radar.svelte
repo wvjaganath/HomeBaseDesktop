@@ -6,7 +6,7 @@
   import Icon from '../components/Icon.svelte';
   import Logo from '../components/Logo.svelte';
   import { api } from '../lib/api';
-  import { DELAY_COLORS, distUnit, fmtInt, MAP_CREDIT, tileUrl } from '../lib/format';
+  import { DELAY_COLORS, distUnit, fmtInt, MAP_CREDIT, shortTime, tileUrl } from '../lib/format';
   import { hub } from '../lib/hub.svelte';
   import { altitudeColor, PlaneLayer } from '../lib/planeLayer';
   import type { RadarAircraft } from '../lib/types';
@@ -300,6 +300,7 @@
           <div class="r"><span class="code" style:color={trackerRoute ? DELAY_COLORS[trackerRoute.destination.delay] : 'var(--text)'}>{d.code || '—'}</span><span class="muted">{d.name}</span></div>
         </div>
         {#if !trackerRoute || trackerRoute.routeSource === 'schedule'}<p class="muted small">Usual route for this flight (adsbdb schedule data)</p>{/if}
+        {#if trackerRoute?.extra?.diverted}<p class="diverted">Diverted: planned to land at {trackerRoute.extra.plannedDestination}</p>{/if}
       {:else if details?.route && details.routeFits === false}
         <p class="muted">Route unknown today: this flight number’s usual route ({details.route.origin.code} → {details.route.destination.code}) doesn’t match where the plane is.</p>
       {:else}
@@ -311,6 +312,11 @@
         <div class="tile"><span class="k">Speed</span><span class="v">{fmtInt(selected.groundSpeedKt)} kt</span></div>
         <div class="tile"><span class="k">Vertical</span><span class="v">{selected.verticalFpm === null ? '—' : `${selected.verticalFpm > 0 ? '+' : ''}${fmtInt(selected.verticalFpm)} fpm`}</span></div>
         <div class="tile"><span class="k">From home</span><span class="v">{selected.distance.toFixed(1)} {distUnit(units)} {selected.direction}</span></div>
+        {#if trackerRoute?.flightNumber}<div class="tile"><span class="k">Flight</span><span class="v">{trackerRoute.flightNumber}</span></div>{/if}
+        {#if trackerRoute?.times.actualDeparture}
+          <div class="tile"><span class="k">Took off</span><span class="v">{shortTime(new Date(trackerRoute.times.actualDeparture * 1000))}</span>{#if trackerRoute.extra?.runwayTakeoff}<span class="muted small">Runway {trackerRoute.extra.runwayTakeoff}</span>{/if}</div>
+        {/if}
+        {#if trackerRoute?.extra?.tripKm}<div class="tile"><span class="k">Trip</span><span class="v">{units === 'metric' ? `${fmtInt(trackerRoute.extra.tripKm)} km` : `${fmtInt(Math.round(trackerRoute.extra.tripKm / 1.609344))} mi`}</span><span class="muted small">{trackerRoute.origin.code} → {trackerRoute.destination.code}, great-circle</span></div>{/if}
         <div class="tile wide">
           <span class="k">Aircraft</span>
           <span class="v">{trackerFlight?.aircraftName || [details?.airframe?.manufacturer, details?.airframe?.type].filter(Boolean).join(' ') || selected.type || 'Unknown'}</span>
@@ -335,7 +341,7 @@
           <li>
             <button class="nearbtn" class:sel={a.hex === selected?.hex} onclick={() => { selectedHex = a.hex; follow = false; }}>
               <span class="mono">{a.callsign || a.hex.toUpperCase()}</span>
-              <span class="muted">{a.type}</span>
+              <span class="muted">{a.route ? `${a.route.from} → ${a.route.to}` : a.type}</span>
               <span style:color={altitudeColor(a.altitudeFt)}>{a.altitudeFt === null ? 'GND' : `${Math.round(a.altitudeFt / 1000)}k`}</span>
               <span class="muted">{a.distance.toFixed(1)} {distUnit(units)}</span>
             </button>
@@ -469,6 +475,11 @@
   }
   .name {
     font-size: 28px;
+    font-weight: 600;
+  }
+  .diverted {
+    margin: 0;
+    color: var(--orange);
     font-weight: 600;
   }
   .route {

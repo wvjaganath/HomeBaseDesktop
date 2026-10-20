@@ -57,3 +57,43 @@ describe('radar polling interval', () => {
     }
   });
 });
+
+describe('radar planes carry their from/to', () => {
+  it('uses the tracker’s route for planes in the box, else adsbdb’s usual route when the plane fits it, looked up a few at a time', async () => {
+    const env = loadEnv({ JWT_SECRET: 'x'.repeat(40), HOME_LAT: '41.88', HOME_LON: '-87.62', TRACKER_URL: '' });
+    const cache = new Map<string, unknown>();
+    const asked: string[] = [];
+    const routes = {
+      peekRoute: (cs: string) => (cache.has(cs) ? cache.get(cs) : undefined),
+      route: async (cs: string) => {
+        asked.push(cs);
+        const r = cs === 'UAL1'
+          ? { airline: null, origin: { code: 'EWR', name: '', city: '', lat: 40.69, lon: -74.17 }, destination: { code: 'ORD', name: '', city: '', lat: 41.98, lon: -87.9 } }
+          : { airline: null, origin: { code: 'MCO', name: '', city: '', lat: 28.43, lon: -81.31 }, destination: { code: 'EWR', name: '', city: '', lat: 40.69, lon: -74.17 } };
+        cache.set(cs, r);
+        return r;
+      },
+    };
+    const tracked = [{ callsign: 'AAL7', origin: { code: 'DFW' }, destination: { code: 'ORD' }, routeSource: 'tracker' }];
+    const radar = new RadarService(env, new EventBus(), log, undefined, undefined, {
+      routes: routes as never,
+      trackerFlights: () => tracked as never,
+    });
+    const feed = { ac: [
+      { hex: 'aaa001', flight: 'AAL7 ', lat: 41.9, lon: -87.65, alt_baro: 3000, gs: 180, track: 270, seen_pos: 1 },
+      { hex: 'aaa002', flight: 'UAL1 ', lat: 41.95, lon: -87.7, alt_baro: 6000, gs: 250, track: 270, seen_pos: 1 },
+      { hex: 'aaa003', flight: 'UAL9 ', lat: 41.85, lon: -87.6, alt_baro: 7000, gs: 260, track: 270, seen_pos: 1 },
+    ] };
+    const ingest = (): void => (radar as unknown as { ingest(raw: unknown, source: string): void }).ingest(feed, 'test');
+    ingest();
+    let byCs = Object.fromEntries(radar.snapshot.data.aircraft.map((a) => [a.callsign, a.route]));
+    expect(byCs.AAL7).toEqual({ from: 'DFW', to: 'ORD', source: 'fr24' });
+    expect(byCs.UAL1).toBeNull(); // not looked up yet…
+    await new Promise((r) => setTimeout(r, 0));
+    expect(asked.sort()).toEqual(['UAL1', 'UAL9']); // …asked for in the background
+    ingest();
+    byCs = Object.fromEntries(radar.snapshot.data.aircraft.map((a) => [a.callsign, a.route]));
+    expect(byCs.UAL1).toEqual({ from: 'EWR', to: 'ORD', source: 'schedule' });
+    expect(byCs.UAL9).toBeNull(); // MCO → EWR can't be a plane over Chicago
+  });
+});

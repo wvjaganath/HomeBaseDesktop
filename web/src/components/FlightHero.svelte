@@ -26,7 +26,8 @@
     if (flight.routeSource === 'schedule') return 'Usual route for this flight (adsbdb schedule data)';
     if (dep === null) return 'Departure time unavailable';
     const late = flight.times.scheduledDeparture ? Math.round((dep - flight.times.scheduledDeparture) / 60) : null;
-    const when = `Departed ${shortTime(new Date(dep * 1000))}`;
+    const runway = flight.extra?.runwayTakeoff ? ` from runway ${flight.extra.runwayTakeoff}` : '';
+    const when = `Departed ${shortTime(new Date(dep * 1000))}${runway}`;
     if (late === null) return when;
     return late <= 5 ? `${when} · on time` : `${when} · ${late} min late`;
   });
@@ -37,7 +38,8 @@
     <Logo icao={flight.logoIcao} size={scale === 'board' ? 180 : 140} alt={flight.airline} />
     <div class="who">
       <span class="airline">{flight.airline || flight.callsign}</span>
-      <span class="ident">{flight.callsign}{flight.flightNumber ? ` · ${flight.flightNumber}` : ''}{flight.aircraftName || flight.aircraftCode ? ` · ${flight.aircraftName || flight.aircraftCode}` : ''}</span>
+      <span class="ident">{flight.callsign}{flight.flightNumber ? ` · ${flight.flightNumber}` : ''}{flight.aircraftName || flight.aircraftCode ? ` · ${flight.aircraftName || flight.aircraftCode}` : ''}{flight.extra?.registration ? ` · ${flight.extra.registration}` : ''}</span>
+      {#if flight.extra?.diverted && flight.extra.plannedDestination}<span class="diverted">Diverted: planned to land at {flight.extra.plannedDestination}</span>{/if}
     </div>
     <AircraftPhoto hex={flight.icao24} />
   </div>
@@ -113,6 +115,11 @@
     display: flex;
     flex-direction: column;
     gap: 10px;
+  }
+  .diverted {
+    color: var(--orange);
+    font-weight: 600;
+    font-size: 18px;
   }
   .airline {
     font-size: 50px;

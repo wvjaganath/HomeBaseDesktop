@@ -16,6 +16,7 @@ const routes: Record<string, unknown> = {
       destination_longitude: -117.601, plane_latitude: 41.66, plane_longitude: -87.93, altitude: 7875, heading: 232,
       vertical_speed: 2240, distance: 3.2, direction: 'S', distance_origin: 19, distance_destination: 1685,
       time_scheduled_departure: now - 600, time_real_departure: now - 420, time_scheduled_arrival: now + 14000, time_estimated_arrival: null,
+      fr24: { flight: 'WN3508', registration: 'N8642E', type: 'B738', runway_takeoff: '31C', planned_dest: 'ONT', diverted: false, circle_distance: 2_711.6 },
     },
     // What the tracker sends when no lookup source knew the route.
     { callsign: 'UAL1234', icao24: 'ABC123', airline: 'Private', plane: '', origin: '?', destination: '?', owner_iata: 'N/A', owner_icao: 'UAL', plane_latitude: 41.7, plane_longitude: -87.9, altitude: 9000, ground_speed: 310, distance: 4.1, direction: 'N', distance_origin: 0, distance_destination: 0 },
@@ -73,6 +74,7 @@ describe('TrackerService', () => {
     expect(s.flights).toHaveLength(3);
     const f = s.flights[0];
     expect(f?.flightNumber).toBe('WN 3508');
+    expect(f?.extra).toEqual({ registration: 'N8642E', runwayTakeoff: '31C', diverted: false, plannedDestination: 'ONT', tripKm: 2712 });
     expect(f?.logoIcao).toBe('SWA');
     expect(f?.origin.name).toBe('Chicago Midway');
     expect(f?.origin.delay).toBe('ontime');

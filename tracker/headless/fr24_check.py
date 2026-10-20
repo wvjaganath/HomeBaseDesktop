@@ -1,12 +1,12 @@
 """HomeBase: ask FlightRadar24 about one flight, exactly as the tracker does.
 
 Shows whether the tracker's FR24 client and key are loaded, then FR24's raw
-answer for the request the tracker sends (and the same with "Z" on the times),
-so a missing route can be traced to the key, the plan or the request.
+answer for the request the tracker sends (flight-summary/full), so a missing
+route can be traced to the key, the plan or the request.
 
     docker compose exec -T tracker python /opt/tracker/headless/fr24_check.py UAL1738
 
-Uses one FR24 lookup (credits) per request, so two in all. The key is never printed.
+Uses one FR24 lookup (2 credits on the full endpoint, per flight returned). The key is never printed.
 """
 
 from __future__ import annotations
@@ -33,20 +33,17 @@ if not fr.FR24_API_KEY:
     sys.exit("No FR24 key in the tracker's settings (Settings -> Plane tracker -> API keys).")
 
 now = datetime.now(timezone.utc)
-base = {
+params = {
     "callsigns": callsign,
-    "flight_datetime_from": (now - timedelta(hours=12)).strftime("%Y-%m-%dT%H:%M:%S"),
-    "flight_datetime_to": (now + timedelta(hours=2)).strftime("%Y-%m-%dT%H:%M:%S"),
-    "limit": 5,
+    "flight_datetime_from": (now - timedelta(hours=12)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+    "flight_datetime_to": (now + timedelta(hours=2)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+    "limit": 2,
     "sort": "desc",
 }
-with_z = {**base, "flight_datetime_from": base["flight_datetime_from"] + "Z", "flight_datetime_to": base["flight_datetime_to"] + "Z"}
 headers = {"Accept": "application/json", "Accept-Version": "v1", "Authorization": f"Bearer {fr.FR24_API_KEY}"}
-
-for label, params in (("as the tracker sends it", base), ('with "Z" on the times', with_z)):
-    try:
-        r = requests.get(f"{fr.BASE_URL}/flight-summary/light", params=params, headers=headers, timeout=15)
-        print(f"--- {label}: HTTP {r.status_code}")
-        print(r.text[:800].replace(fr.FR24_API_KEY, "[hidden]"))
-    except requests.RequestException as e:
-        print(f"--- {label}: request failed: {e}")
+try:
+    r = requests.get(f"{fr.BASE_URL}/flight-summary/full", params=params, headers=headers, timeout=15)
+    print(f"--- FR24 answer: HTTP {r.status_code}")
+    print(r.text[:1500].replace(fr.FR24_API_KEY, "[hidden]"))
+except requests.RequestException as e:
+    sys.exit(f"--- request failed: {e}")

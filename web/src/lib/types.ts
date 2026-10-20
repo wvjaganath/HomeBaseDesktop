@@ -24,6 +24,8 @@ export interface Flight {
   progress: number | null;
   /** tracker = its FR24/AirLabs/FlightAware lookup; schedule = adsbdb's usual route for the callsign. */
   routeSource: 'tracker' | 'schedule' | null;
+  /** More from FR24's flight summary (when the tracker's lookup found it there). */
+  extra?: { registration: string; runwayTakeoff: string; diverted: boolean; plannedDestination: string; tripKm: number | null } | null;
   position: {
     lat: number | null;
     lon: number | null;
@@ -81,6 +83,8 @@ export interface RadarAircraft {
   distance: number;
   direction: string;
   trail: Array<[number, number]>;
+  /** fr24 = the tracker's FR24 route (in the box); schedule = adsbdb's usual route, shown only when the plane fits it. */
+  route?: { from: string; to: string; source: 'fr24' | 'schedule' } | null;
 }
 
 export interface RadarSnapshot {

@@ -27,7 +27,7 @@ Kept to a minimum so updating stays easy (each change is marked `HomeBase` in th
 | `utilities/routelookup.py` | Logs why a source gave no route: client didn't load, not available, no origin airport in the answer, or a route that doesn't fit the plane's position |  Upstream skips these silently, which hid why FR24 routes never showed. |
 | `utilities/routelookup.py`, `utilities/flightradar.py` | A route nobody knew is retried after 2 minutes (`MISS_TTL`), not an hour | A plane first seen just after takeoff often isn't in FR24's flight summary yet; upstream then never showed its route. |
 | `utilities/overhead.py` | Reuses a plane's cached details only when they have a route; adds `ground_speed` to each in-box entry | So the retry above reaches a plane that stays in the box, and the speed can be shown. |
-| `utilities/flightradar.py` | Logs why a lookup found nothing: FR24's HTTP status, "no flight with this callsign", or no key loaded | Upstream returned nothing silently, so a bad key or used-up credits couldn't be seen in `docker compose logs tracker`. |
+| `utilities/flightradar.py` | Uses `flight-summary/full` instead of `/light` (IATA codes direct, plus flight number, registration, take-off runway, diversion, distance, passed on as `fr24` in `/overhead/json`), UTC times written with `Z`, at most 2 flights returned; logs why a lookup found nothing: FR24's HTTP status, "no flight with this callsign", or no key loaded | Upstream returned nothing silently, so a bad key or used-up credits couldn't be seen in `docker compose logs tracker`. |
 | `logos/` | Only `default.png` | The server draws nothing; the LED board has its own logo set. |
 | `fonts/` | Not copied | The headless stand-in doesn't read fonts. |
 

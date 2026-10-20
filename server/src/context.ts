@@ -37,6 +37,8 @@ export function createContext(env: Env, db: DB, log: FastifyBaseLogger): AppCont
   const view = (): HubSettings => settings.values;
   const home = new HomeLocation(env, log.child({ svc: 'home' }), view);
   const routes = new RouteLookupService(env, view);
+  // Routes the tracker's lookup couldn't find come from adsbdb's schedule data.
+  const tracker = new TrackerService(env, bus, log.child({ svc: 'tracker' }), { routes, units: () => home.units });
   return {
     env,
     db,
@@ -44,10 +46,10 @@ export function createContext(env: Env, db: DB, log: FastifyBaseLogger): AppCont
     auth: new AuthService(db, env, view),
     secretBox,
     settings,
-    // Routes the tracker's lookup couldn't find come from adsbdb's schedule data.
-    tracker: new TrackerService(env, bus, log.child({ svc: 'tracker' }), { routes, units: () => home.units }),
+    tracker,
     home,
-    radar: new RadarService(env, bus, log.child({ svc: 'radar' }), home, view),
+    // Each radar plane's from/to: the tracker's route in the box, else adsbdb's usual route when it fits.
+    radar: new RadarService(env, bus, log.child({ svc: 'radar' }), home, view, { routes, trackerFlights: () => tracker.snapshot.state.flights }),
     routes,
     calendar: new CalendarService(db, secretBox, bus, log.child({ svc: 'calendar' })),
     backup: new BackupService(db, env, log.child({ svc: 'backup' }), view),

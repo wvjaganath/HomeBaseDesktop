@@ -179,7 +179,7 @@ export class PlaneLayer extends L.Layer {
       // Labels only for the closest few (sorted by distance server-side) to stay readable.
       if (this.labels && (i < this.labelCount || hot || sel) && a.callsign) {
         const alt = a.altitudeFt === null ? 'GND' : `${Math.round(a.altitudeFt / 100) / 10}k`;
-        const text = `${a.callsign} ${alt}`;
+        const text = a.route ? `${a.callsign} ${a.route.from}→${a.route.to} ${alt}` : `${a.callsign} ${alt}`;
         const x = p.x + px * 0.6 + 4;
         if (hot) {
           const w = ctx.measureText(text).width + 16;
