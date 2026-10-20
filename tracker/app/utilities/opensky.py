@@ -44,6 +44,7 @@ TOKEN_URL = (
 )
 BASE_URL = "https://opensky-network.org"
 _OPENSKY_PAUSED_UNTIL = 0.0  # HomeBase patch: see _fetch_opensky_zone
+_ADSBLOL_PAUSED_UNTIL = 0.0  # HomeBase patch: see get_zone_states
 
 
 def _parse_state(s):
@@ -130,12 +131,29 @@ class OpenSkyClient:
         lon_min = ZONE_DEFAULT["tl_x"]
         lon_max = ZONE_DEFAULT["br_x"]
 
-        # 1. Try adsb.lol first — more reliable uptime
-        results = self._fetch_adsblo_zone(lat_min, lat_max, lon_min, lon_max)
+        import time as _time
+        global _ADSBLOL_PAUSED_UNTIL
 
-        # 2. FALLBACK: Only fall back to OpenSky on failure (None), not empty zone ([])
+        # 1. Try adsb.lol first — more reliable uptime
+        # HomeBase patch: unless it said "too many requests" recently (then leave it alone).
+        results = None
+        if _time.time() >= _ADSBLOL_PAUSED_UNTIL:
+            results = self._fetch_adsblo_zone(lat_min, lat_max, lon_min, lon_max)
+            if results == "rate_limited":
+                _ADSBLOL_PAUSED_UNTIL = _time.time() + 600
+                print("[adsb.lol] Too many requests; using adsb.fi for the next 10 minutes")
+                results = None
+
+        # 2. HomeBase patch: adsb.fi (same free community data, no key), before OpenSky's
+        #    small anonymous allowance.
         if results is None:
-            print("[adsb.lol] Request failed — falling back to OpenSky...")
+            results = self._fetch_adsblo_zone(lat_min, lat_max, lon_min, lon_max, base="https://opendata.adsb.fi/api/v3", name="adsb.fi")
+            if results == "rate_limited":
+                results = None
+
+        # 3. FALLBACK: Only fall back to OpenSky on failure (None), not empty zone ([])
+        if results is None:
+            print("[adsb.lol/adsb.fi] Request failed — falling back to OpenSky...")
             results = self._fetch_opensky_zone(lat_min, lat_max, lon_min, lon_max)
 
         return results or []
@@ -205,7 +223,7 @@ class OpenSkyClient:
 
         return results
 
-    def _fetch_adsblo_zone(self, lat_min, lat_max, lon_min, lon_max):
+    def _fetch_adsblo_zone(self, lat_min, lat_max, lon_min, lon_max, base="https://api.adsb.lol/v2", name="adsb.lol"):
         """
         Fetch zone states from adsb.lol using a circle that fits inside the bounding box.
         Results are filtered back to the exact bounding box after fetching.
@@ -230,15 +248,19 @@ class OpenSkyClient:
 
         try:
             resp = requests.get(
-                f"https://api.adsb.lol/v2/lat/{lat_c}/lon/{lon_c}/dist/{radius_nm}",
+                f"{base}/lat/{lat_c}/lon/{lon_c}/dist/{radius_nm}",
                 timeout=10,
             )
+            if resp.status_code == 429:  # HomeBase patch: the caller backs off
+                print(f"[{name}] Zone fetch failed: HTTP 429")
+                return "rate_limited"
             if resp.status_code != 200:
-                print(f"[adsb.lol] Zone fetch failed: HTTP {resp.status_code}")
+                print(f"[{name}] Zone fetch failed: HTTP {resp.status_code}")
                 return None
-            ac_list = resp.json().get("ac", [])
+            body = resp.json()
+            ac_list = body.get("ac") or body.get("aircraft") or []  # adsb.fi may say "aircraft"
         except Exception as e:
-            print(f"[adsb.lol] Zone fetch failed: {e}")
+            print(f"[{name}] Zone fetch failed: {e}")
             return None
 
         results = []
