@@ -24,6 +24,7 @@ Kept to a minimum so updating stays easy (each change is marked `HomeBase` in th
 | `utilities/landmarks.py` | No place-name lookups when `HOMEBASE_HEADLESS=1` | On the server nothing displays them, so there's no reason to query OpenStreetMap's Nominatim. |
 | `utilities/opensky.py` | Pauses OpenSky after HTTP 429; finds planes in the box from adsb.fi when adsb.lol fails, and leaves adsb.lol alone for 10 minutes after its HTTP 429 | The anonymous backup (used only when adsb.lol fails) would otherwise retry every 30 s after the daily allowance is used up. With adsb.lol refusing (HTTP 429) and OpenSky's ~400 a day used up, the tracker saw no planes at all, so the board never showed a plane in the box; adsb.fi is the same free community data. |
 | `utilities/routelookup.py` | A cached "route not found" keeps the plane | Upstream caches a failed lookup as `{}`, and `overhead.py` then drops that plane for an hour, so a plane in your box vanished from every board. It now gets the same "route unknown" entry as on the first miss. |
+| `utilities/routelookup.py` | Logs why a source gave no route: client didn't load, not available, no origin airport in the answer, or a route that doesn't fit the plane's position |  Upstream skips these silently, which hid why FR24 routes never showed. |
 | `utilities/routelookup.py`, `utilities/flightradar.py` | A route nobody knew is retried after 2 minutes (`MISS_TTL`), not an hour | A plane first seen just after takeoff often isn't in FR24's flight summary yet; upstream then never showed its route. |
 | `utilities/overhead.py` | Reuses a plane's cached details only when they have a route; adds `ground_speed` to each in-box entry | So the retry above reaches a plane that stays in the box, and the speed can be shown. |
 | `utilities/flightradar.py` | Logs why a lookup found nothing: FR24's HTTP status, "no flight with this callsign", or no key loaded | Upstream returned nothing silently, so a bad key or used-up credits couldn't be seen in `docker compose logs tracker`. |
@@ -41,6 +42,7 @@ Everything else is byte-for-byte upstream. HomeBase's own pieces live outside
   state (config, caches, logs, counters, maps) on the `/data` volume,
   restarts it on request, and hides API keys in its log output (upstream's
   error messages can include a request URL with the key in it).
+- `headless/fr24_check.py`: asks FR24 about one callsign exactly as the tracker does and prints the raw answer (`docker compose exec -T tracker python /opt/tracker/headless/fr24_check.py UAL1738`).
 - `requirements.txt`: the Python packages it imports, exact versions with hashes.
 
 ## Updating to a newer upstream version

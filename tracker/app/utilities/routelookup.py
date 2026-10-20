@@ -16,7 +16,8 @@ try:
     from utilities.flightradar import FR24Client as _FR24Client
     _fr24_client = _FR24Client()
     _has_fr24 = True
-except Exception:
+except Exception as _e:  # HomeBase patch: say why instead of silently skipping FR24
+    print(f"[RouteClient] FR24 client didn't load: {_e}")
     _fr24_client = None
     _has_fr24 = False
 
@@ -270,6 +271,7 @@ class RouteClient:
 
             fn, check = _SOURCE_FNS[source]
             if not check():
+                print(f"[RouteClient] {callsign}: {source} not available (no key or client)")  # HomeBase patch
                 continue
 
             result = fn(callsign)
@@ -278,6 +280,8 @@ class RouteClient:
                        result.get("dest_iata")   if result else None)
 
             if not result or result.get("origin_iata") in ("?", "", None):
+                if result:  # HomeBase patch: an answer without an origin airport
+                    print(f"[RouteClient] {callsign}: {source} answered without an origin airport")
                 continue
 
             if _is_plausible(result, plane_lat, plane_lon):
@@ -286,6 +290,7 @@ class RouteClient:
                     self._last_source = source
                     return _cache_and_return(normalised)
             else:
+                print(f"[RouteClient] {callsign}: {source} route {result.get('origin_iata')}-{result.get('dest_iata')} doesn't fit the plane's position; ignored")  # HomeBase patch
                 key = (result.get("origin_iata"), result.get("dest_iata"))
                 if dubious_route is None:
                     dubious_route = result
