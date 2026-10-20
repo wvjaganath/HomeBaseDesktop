@@ -8,6 +8,7 @@ import { HomeLocation } from './home.js';
 import { settingsFromEnv, type SettingsView } from './hubSettings.js';
 import { routeFits, type RouteLookupService } from './routeLookup.js';
 import type { Flight } from './tracker.js';
+import type { UsageLog } from './usage.js';
 
 /** New adsbdb route lookups started per update (cached 6 h), so a busy sky doesn't flood it. */
 const ROUTE_LOOKUPS_PER_POLL = 3;
@@ -103,7 +104,7 @@ export class RadarService {
     private readonly log: FastifyBaseLogger,
     homeLoc?: HomeLocation,
     settings?: SettingsView,
-    private readonly opts: { routes?: RouteLookupService; trackerFlights?: () => Flight[] } = {},
+    private readonly opts: { routes?: RouteLookupService; usage?: UsageLog; trackerFlights?: () => Flight[] } = {},
   ) {
     this.settings = settings ?? settingsFromEnv(env);
     this.homeLoc = homeLoc ?? new HomeLocation(env, undefined, this.settings);
@@ -231,6 +232,7 @@ export class RadarService {
       // hub doesn't keep the home's address over its limit (the plane tracker uses
       // adsb.lol from the same address and would be refused too).
       if ((this.pausedUntil.get(p.name) ?? 0) > now) continue;
+      this.opts.usage?.count(p.name);
       try {
         const raw = await safeFetchJson(p.url(lat, lon, this.snapshotData.radiusNm), {
           allowHosts: [p.host],

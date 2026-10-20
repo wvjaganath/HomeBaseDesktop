@@ -17,6 +17,12 @@
     mirror: { enabled: boolean; reachable: boolean };
     mapTiles?: { key: boolean };
     screens: { count: number; lastSeenAt: string | null };
+    outsideRequests?: {
+      days: Array<{ day: string; fr24: number | null; 'adsb.lol': number; 'adsb.fi': number; adsbdb: number }>;
+      last30: { fr24: number; 'adsb.lol': number; 'adsb.fi': number; adsbdb: number };
+      fr24CreditsPerLookup: number;
+      fr24Known: boolean;
+    };
   }
   type Level = 'ok' | 'warn' | 'bad' | 'off';
   interface Row {
@@ -140,6 +146,14 @@
     ];
   });
 
+  const n = (v: number | null): string => (v === null ? '—' : v.toLocaleString());
+  function dayName(day: string, i: number): string {
+    if (i === 0) return 'Today';
+    if (i === 1) return 'Yesterday';
+    const [y, m, d] = day.split('-').map(Number);
+    return new Date(y ?? 2000, (m ?? 1) - 1, d ?? 1).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
+  }
+
   const ICON: Record<Level, IconName> = { ok: 'check', warn: 'alert', bad: 'close', off: 'minus' };
   const WORD: Record<Level, string> = { ok: 'OK', warn: 'Check', bad: 'Problem', off: 'Off' };
 
@@ -167,6 +181,44 @@
         </div>
       {/each}
     </dl>
+    {#if status.outsideRequests}
+      {@const u = status.outsideRequests}
+      <h3>Requests to outside services</h3>
+      <div class="tablewrap">
+        <table>
+          <thead>
+            <tr><th scope="col">Day</th><th scope="col">FR24 lookups</th><th scope="col">≈ FR24 credits</th><th scope="col">adsb.lol</th><th scope="col">adsb.fi</th><th scope="col">adsbdb</th></tr>
+          </thead>
+          <tbody>
+            {#each u.days as d, i (d.day)}
+              <tr>
+                <th scope="row">{dayName(d.day, i)}</th>
+                <td>{n(d.fr24)}</td>
+                <td>{d.fr24 === null ? '—' : n(d.fr24 * u.fr24CreditsPerLookup)}</td>
+                <td>{n(d['adsb.lol'])}</td>
+                <td>{n(d['adsb.fi'])}</td>
+                <td>{n(d.adsbdb)}</td>
+              </tr>
+            {/each}
+          </tbody>
+          <tfoot>
+            <tr>
+              <th scope="row">Last 30 days</th>
+              <td>{u.fr24Known ? n(u.last30.fr24) : '—'}</td>
+              <td>{u.fr24Known ? n(u.last30.fr24 * u.fr24CreditsPerLookup) : '—'}</td>
+              <td>{n(u.last30['adsb.lol'])}</td>
+              <td>{n(u.last30['adsb.fi'])}</td>
+              <td>{n(u.last30.adsbdb)}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+      <p class="muted small">
+        <strong>FR24</strong> (your credits): from the plane tracker’s API log, one lookup for each new plane in your box, a retry every 2 minutes while FR24 has no route for it, and Track a flight. About {u.fr24CreditsPerLookup} credits a lookup on the full flight summary; the FR24 portal has the exact figure. To use fewer, make the box smaller or raise the minimum altitude (Settings → Plane tracker).
+        <strong>adsb.lol / adsb.fi</strong> (free): the radar’s feed, one request per update while a screen shows Home, Flights or Radar (Settings → Hub → Ask for planes every); the radar’s range doesn’t change the count. The plane tracker also asks for your box every 30 s (about 2,880 a day), not counted here.
+        <strong>adsbdb</strong> (free): flight numbers, airlines and aircraft types, remembered 6 hours.
+      </p>
+    {/if}
     <div class="foot">
       <span class="muted small">Hub {status.hub.version} · Node {status.hub.node.replace(/^v/, '')} · up since {new Date(status.hub.startedAt).toLocaleString()}</span>
       {#if status.backup.enabled}
@@ -247,6 +299,42 @@
   }
   .pill.off {
     color: var(--muted);
+  }
+  h3 {
+    margin: 8px 0 0;
+    font-size: 17px;
+  }
+  .tablewrap {
+    overflow-x: auto;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-variant-numeric: tabular-nums;
+  }
+  th,
+  td {
+    padding: 8px 10px;
+    text-align: right;
+    border-top: 1px solid var(--line);
+    white-space: nowrap;
+  }
+  thead th {
+    border-top: 0;
+    color: var(--muted);
+    font-weight: 600;
+    font-size: 14px;
+  }
+  th[scope='row'],
+  thead th:first-child {
+    text-align: left;
+    font-weight: 500;
+    color: var(--text-2);
+  }
+  tfoot th,
+  tfoot td {
+    font-weight: 700;
+    border-top: 2px solid var(--line-2);
   }
   .foot {
     display: flex;

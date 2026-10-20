@@ -2,6 +2,7 @@ import { z } from 'zod';
 import type { Env } from '../env.js';
 import { settingsFromEnv, type SettingsView } from './hubSettings.js';
 import { haversineMiles } from '../lib/geo.js';
+import type { UsageLog } from './usage.js';
 import { safeFetchJson, FetchError } from '../security/safeFetch.js';
 
 /**
@@ -106,7 +107,11 @@ export class RouteLookupService {
 
   private readonly settings: SettingsView;
 
-  constructor(env: Env, settings?: SettingsView) {
+  constructor(
+    env: Env,
+    settings?: SettingsView,
+    private readonly usage?: UsageLog,
+  ) {
     this.settings = settings ?? settingsFromEnv(env);
   }
 
@@ -124,6 +129,7 @@ export class RouteLookupService {
   }
 
   private request(path: string): Promise<unknown> {
+    this.usage?.count('adsbdb');
     const c = this.settings().adsbContact;
     const contact = c ? ` (+${c})` : '';
     return safeFetchJson(`https://${HOST}${path}`, {

@@ -1,6 +1,11 @@
 import fs from 'node:fs';
 import type { FastifyInstance } from 'fastify';
 import { safeFetch } from '../security/safeFetch.js';
+import { TrackerData } from '../services/trackerData.js';
+import { COUNTED_SERVICES, localDay } from '../services/usage.js';
+
+/** Credits per FR24 lookup: the tracker uses flight-summary/full (2 credits a flight). */
+const FR24_CREDITS_PER_LOOKUP = 2;
 
 const pkg = JSON.parse(fs.readFileSync(new URL('../../package.json', import.meta.url), 'utf8')) as { version: string };
 const startedAt = new Date();
@@ -15,7 +20,38 @@ function fileBytes(p: string): number {
 
 /** Health of the hub and everything it talks to, for Settings → Status. */
 export default async function statusRoutes(app: FastifyInstance): Promise<void> {
-  const { env, db, tracker, radar, calendar, backup } = app.ctx;
+  const { env, db, tracker, radar, calendar, backup, usage } = app.ctx;
+  const trackerData = new TrackerData(env.TRACKER_URL);
+  // The tracker's API log can be large: read it at most once a minute.
+  let fr24Cache: { at: number; perDay: Record<string, number> | null } = { at: 0, perDay: null };
+  const fr24PerDay = async (): Promise<Record<string, number> | null> => {
+    if (!env.TRACKER_URL) return null;
+    if (Date.now() - fr24Cache.at < 60_000) return fr24Cache.perDay;
+    let perDay: Record<string, number> | null;
+    try {
+      perDay = await trackerData.fr24PerDay();
+    } catch {
+      perDay = null;
+    }
+    fr24Cache = { at: Date.now(), perDay };
+    return perDay;
+  };
+
+  /** Requests per day to each outside service, the last 7 days and 30-day totals. */
+  const outsideRequests = async (): Promise<object> => {
+    const fr = await fr24PerDay();
+    const hub = usage.recent(30);
+    const days: Array<Record<string, string | number | null>> = [];
+    const totals: Record<string, number> = { fr24: 0, 'adsb.lol': 0, 'adsb.fi': 0, adsbdb: 0 };
+    for (let i = 0; i < 30; i++) {
+      const day = localDay(new Date(Date.now() - i * 86_400_000));
+      const row: Record<string, string | number | null> = { day, fr24: fr ? (fr[day] ?? 0) : null };
+      for (const s of COUNTED_SERVICES) row[s] = hub[day]?.[s] ?? 0;
+      for (const k of Object.keys(totals)) totals[k] = (totals[k] ?? 0) + (typeof row[k] === 'number' ? row[k] : 0);
+      if (i < 7) days.push(row);
+    }
+    return { days, last30: totals, fr24CreditsPerLookup: FR24_CREDITS_PER_LOOKUP, fr24Known: fr !== null };
+  };
 
   let mirrorProbe: { at: number; reachable: boolean } = { at: 0, reachable: false };
   const mirrorReachable = async (): Promise<boolean> => {
@@ -74,6 +110,7 @@ export default async function statusRoutes(app: FastifyInstance): Promise<void> 
       // hub.env lines the hub doesn't read any more (they're in Settings now).
       config: { leftoverEnvKeys: app.ctx.settings.leftoverEnvKeys, timezone: env.timezone },
       screens: { count: screens.n, lastSeenAt: screens.last },
+      outsideRequests: await outsideRequests(),
     };
   });
 

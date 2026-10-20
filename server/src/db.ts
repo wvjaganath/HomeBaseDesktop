@@ -103,6 +103,15 @@ const migrations: string[] = [
     updated_by TEXT
   );
   `,
+  // 2026-10: how many requests the hub makes to each outside service, per day.
+  `
+  CREATE TABLE outside_requests (
+    day TEXT NOT NULL,
+    service TEXT NOT NULL,
+    count INTEGER NOT NULL,
+    PRIMARY KEY (day, service)
+  );
+  `,
 ];
 
 export function openDb(dbPath: string): DB {

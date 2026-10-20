@@ -178,6 +178,18 @@ export function parseApiLogLine(line: string): ApiCall | null {
   };
 }
 
+/** Lines whose source is FR24 are real FR24 requests ("NONE" / "CONSENSUS" lines aren't). */
+export function countFr24PerDay(log: string): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const line of log.split('\n')) {
+    const c = parseApiLogLine(line);
+    if (c?.source !== 'FR24') continue;
+    const day = c.time.slice(0, 10);
+    out[day] = (out[day] ?? 0) + 1;
+  }
+  return out;
+}
+
 // ---------- tracking ----------
 
 const CALLSIGN = /^[A-Z0-9]{2,10}$/;
@@ -369,6 +381,14 @@ export class TrackerData extends TrackerClient<DataPath> {
       if (c) out.push(c);
     }
     return out;
+  }
+
+  /** FR24 lookups per day (local date), from every line of the tracker's API log. */
+  async fr24PerDay(): Promise<Record<string, number>> {
+    const r = await this.call('/api_calls/log/json', { maxBytes: BIG });
+    if (r.status === 404) return {};
+    if (r.status !== 200) throw new TrackerAdminError(`The tracker answered HTTP ${r.status}`, 'unreachable');
+    return countFr24PerDay(r.text);
   }
 
   async tracked(): Promise<TrackedState | null> {

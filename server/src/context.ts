@@ -10,6 +10,7 @@ import { HomeLocation } from './services/home.js';
 import { HubSettingsService, type HubSettings } from './services/hubSettings.js';
 import { RadarService } from './services/radar.js';
 import { RouteLookupService } from './services/routeLookup.js';
+import { UsageLog } from './services/usage.js';
 import { TrackerService } from './services/tracker.js';
 
 /** Everything route handlers need, created once per server instance. */
@@ -26,6 +27,7 @@ export interface AppContext {
   home: HomeLocation;
   radar: RadarService;
   routes: RouteLookupService;
+  usage: UsageLog;
   calendar: CalendarService;
   backup: BackupService;
 }
@@ -36,7 +38,8 @@ export function createContext(env: Env, db: DB, log: FastifyBaseLogger): AppCont
   const settings = new HubSettingsService(db, secretBox, env, log.child({ svc: 'settings' }));
   const view = (): HubSettings => settings.values;
   const home = new HomeLocation(env, log.child({ svc: 'home' }), view);
-  const routes = new RouteLookupService(env, view);
+  const usage = new UsageLog(db);
+  const routes = new RouteLookupService(env, view, usage);
   // Routes the tracker's lookup couldn't find come from adsbdb's schedule data.
   const tracker = new TrackerService(env, bus, log.child({ svc: 'tracker' }), { routes, units: () => home.units });
   return {
@@ -49,8 +52,9 @@ export function createContext(env: Env, db: DB, log: FastifyBaseLogger): AppCont
     tracker,
     home,
     // Each radar plane's from/to: the tracker's route in the box, else adsbdb's usual route when it fits.
-    radar: new RadarService(env, bus, log.child({ svc: 'radar' }), home, view, { routes, trackerFlights: () => tracker.snapshot.state.flights }),
+    radar: new RadarService(env, bus, log.child({ svc: 'radar' }), home, view, { routes, usage, trackerFlights: () => tracker.snapshot.state.flights }),
     routes,
+    usage,
     calendar: new CalendarService(db, secretBox, bus, log.child({ svc: 'calendar' })),
     backup: new BackupService(db, env, log.child({ svc: 'backup' }), view),
   };
