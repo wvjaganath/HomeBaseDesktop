@@ -88,7 +88,7 @@ describe('TrackerService', () => {
     expect(s.alerts).toEqual([{ text: 'ORD Arr45', level: 'orange' }, { text: 'ISS 6m', level: 'white' }]);
   });
 
-  it('fills a route the tracker couldn’t find from adsbdb’s schedule, only when the plane is on it', async () => {
+  it('fills the airline, flight number and aircraft from adsbdb when the tracker has no route, but never adsbdb’s route', async () => {
     const env = loadEnv({ JWT_SECRET: 'x'.repeat(40), TRACKER_URL: `http://127.0.0.1:${port}` });
     const known: Record<string, unknown> = {
       UAL1234: { airline: { name: 'United Airlines', icao: 'UAL', iata: 'UA' }, origin: { code: 'ORD', name: "Chicago O'Hare International Airport", city: 'Chicago', lat: 41.978, lon: -87.904 }, destination: { code: 'DEN', name: 'Denver International Airport', city: 'Denver', lat: 39.861, lon: -104.673 } },
@@ -103,9 +103,8 @@ describe('TrackerService', () => {
     tracker.stop();
     const [swa, ual, private_] = tracker.snapshot.state.flights;
     expect(swa?.routeSource).toBe('tracker'); // the tracker's own route is kept
-    expect(ual).toMatchObject({ routeSource: 'schedule', airline: 'United Airlines', flightNumber: 'UA 1234', aircraftCode: 'A319', origin: { code: 'ORD', name: "Chicago O'Hare" }, destination: { code: 'DEN' } });
-    expect(ual?.origin.distance).toBeGreaterThan(10);
-    expect(ual?.progress).toBeGreaterThan(0);
+    // adsbdb's ORD → DEN would fit, but its "usual route" is often another leg: not used.
+    expect(ual).toMatchObject({ routeSource: null, airline: 'United Airlines', flightNumber: 'UA 1234', aircraftCode: 'A319', origin: { code: '' }, destination: { code: '' } });
     expect(private_?.routeSource).toBeNull(); // tail numbers aren't looked up
 
     // A schedule route the plane can't be on (Boston → New York over Chicago) is ignored.

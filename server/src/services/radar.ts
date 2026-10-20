@@ -188,8 +188,9 @@ export class RadarService {
     let started = 0;
     for (const a of aircraft) {
       const f = tracked.get(a.callsign);
-      if (f?.origin.code && f.destination.code) {
-        a.route = { from: f.origin.code, to: f.destination.code, source: f.routeSource === 'tracker' ? 'fr24' : 'schedule' };
+      if (f) {
+        // In the box: the tracker's (FR24) route or none, as on the overhead screen.
+        if (f.origin.code && f.destination.code) a.route = { from: f.origin.code, to: f.destination.code, source: 'fr24' };
         continue;
       }
       if (!routes || !/^[A-Z]{3}\d/.test(a.callsign)) continue;

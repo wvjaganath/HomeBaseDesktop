@@ -66,7 +66,8 @@
   // The tracker's flight only counts for the route when it actually has one.
   const trackerRoute = $derived(trackerFlight && (trackerFlight.origin.code || trackerFlight.destination.code) ? trackerFlight : undefined);
   // adsbdb's usual route, only when the plane can be on it.
-  const scheduleRoute = $derived(details?.route && details.routeFits !== false ? details.route : null);
+  // Not for a plane in the box: there the overhead screen's rule applies (FR24's route or none).
+  const scheduleRoute = $derived(!trackerFlight && details?.route && details.routeFits !== false ? details.route : null);
 
   // Home comes from the plane tracker's Location settings (or Settings → Hub), possibly later.
   const known = (h: { lat: number; lon: number } | undefined | null): h is { lat: number; lon: number } => !!h && !(h.lat === 0 && h.lon === 0);
@@ -301,6 +302,8 @@
         </div>
         {#if !trackerRoute || trackerRoute.routeSource === 'schedule'}<p class="muted small">Usual route for this flight (adsbdb schedule data)</p>{/if}
         {#if trackerRoute?.extra?.diverted}<p class="diverted">Diverted: planned to land at {trackerRoute.extra.plannedDestination}</p>{/if}
+      {:else if trackerFlight}
+        <p class="muted">Route not found: the tracker’s FR24 lookup had no answer for this flight.</p>
       {:else if details?.route && details.routeFits === false}
         <p class="muted">Route unknown today: this flight number’s usual route ({details.route.origin.code} → {details.route.destination.code}) doesn’t match where the plane is.</p>
       {:else}

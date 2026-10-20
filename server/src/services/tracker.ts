@@ -2,9 +2,8 @@ import type { FastifyBaseLogger } from 'fastify';
 import { z } from 'zod';
 import type { Env } from '../env.js';
 import type { EventBus } from '../events.js';
-import { haversineMiles, milesTo } from '../lib/geo.js';
 import { safeFetchJson } from '../security/safeFetch.js';
-import { routeFits, type RouteLookupService } from './routeLookup.js';
+import type { RouteLookupService } from './routeLookup.js';
 
 /**
  * Adapter for the plane-tracker-rgb-pi web UI (Flask on the LED Pi).
@@ -299,13 +298,12 @@ export class TrackerService {
 
   /**
    * The tracker had no route (its FR24/AirLabs/FlightAware lookup found
-   * nothing): use adsbdb's schedule route for the callsign, free and cached,
-   * if the plane is plausibly on it. Also fills in the aircraft type.
+   * nothing): fill what adsbdb knows reliably, the airline and flight number
+   * for the callsign and the aircraft type, never its route.
    */
   private async fillMissingRoutes(flights: Flight[]): Promise<void> {
     const routes = this.routes;
     if (!routes) return;
-    const units = this.units();
     await Promise.all(
       flights.map(async (f) => {
         if (!f.aircraftCode && f.icao24) {
@@ -322,22 +320,10 @@ export class TrackerService {
         if (!f.airline && r.airline?.name) f.airline = r.airline.name;
         const digits = /\d+[A-Z]?$/.exec(f.callsign)?.[0] ?? '';
         if (!f.flightNumber && r.airline?.iata && digits) f.flightNumber = `${r.airline.iata} ${digits}`;
-        const { lat, lon } = f.position;
-        if (!r.origin.code || !r.destination.code || lat === null || lon === null) return;
-        // Same check as the tracker's: the plane must be roughly between the two airports.
-        if (routeFits(r, lat, lon) === false) return;
-        const o = r.origin;
-        const d = r.destination;
-        let dO: number | null = null;
-        let dD: number | null = null;
-        if (o.lat !== null && o.lon !== null && d.lat !== null && d.lon !== null) {
-          dO = Math.round(milesTo(units, haversineMiles(lat, lon, o.lat, o.lon)));
-          dD = Math.round(milesTo(units, haversineMiles(lat, lon, d.lat, d.lon)));
-        }
-        f.origin = { ...f.origin, code: o.code, name: shortAirportName(o.name) || o.city, lat: o.lat, lon: o.lon, distance: dO };
-        f.destination = { ...f.destination, code: d.code, name: shortAirportName(d.name) || d.city, lat: d.lat, lon: d.lon, distance: dD };
-        f.progress = dO !== null && dD !== null && dO + dD > 0 ? dO / (dO + dD) : null;
-        f.routeSource = 'schedule';
+        // No route from adsbdb for a plane in the box: its "usual route" for a flight
+        // number is often another leg, sometimes one the plane could plausibly be on
+        // (AA788 listed as DFW → DTW over Chicago while flying JFK → ORD). The
+        // overhead screen shows FR24's route or none.
       }),
     );
   }
