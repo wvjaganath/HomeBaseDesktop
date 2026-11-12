@@ -12,7 +12,7 @@ DAYS="${COOL_OFF_DAYS:-7}"
 BEFORE="$(date -u -d "-${DAYS} days" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -v-"${DAYS}"d +%Y-%m-%dT%H:%M:%SZ)"
 echo "Resolving versions published before ${BEFORE}"
 
-SERVER_DEPS=(@fastify/cookie @fastify/helmet @fastify/rate-limit @fastify/static argon2 better-sqlite3 fastify jose node-ical sharp zod)
+SERVER_DEPS=(@fastify/cookie @fastify/helmet @fastify/http-proxy @fastify/rate-limit @fastify/static argon2 better-sqlite3 fastify jose node-ical sharp zod)
 SERVER_DEV=(@eslint/js @types/better-sqlite3 @types/node eslint eslint-plugin-security globals tsx typescript@~6.0.0 typescript-eslint vitest)
 WEB_DEPS=(@fontsource-variable/instrument-sans @fontsource/dotgothic16 @fontsource/ibm-plex-mono leaflet)
 WEB_DEV=(@eslint/js @sveltejs/vite-plugin-svelte @types/leaflet eslint eslint-plugin-svelte globals svelte svelte-check typescript@~6.0.0 typescript-eslint vite)
@@ -21,24 +21,25 @@ WEB_DEV=(@eslint/js @sveltejs/vite-plugin-svelte @types/leaflet eslint eslint-pl
 # typescript stays on 6.0.x until typescript-eslint / svelte-check support TS 7.
 latest() { local out=(); for p in "$@"; do if [[ "${p#@}" == *@* ]]; then out+=("$p"); else out+=("${p}@latest"); fi; done; printf '%s\n' "${out[@]}"; }
 
+# Lists are passed as space-separated strings (no `local -n`), so this also
+# runs on macOS's bash 3.2. Package names never contain spaces.
 install() {
-  local dir="$1"; shift
-  local -n deps="$1"; local -n dev="$2"
+  local dir="$1" deps="$2" dev="$3"
   echo "==> ${dir}"
   ( cd "$dir"
     # Start from a clean slate so old pins don't conflict with the cut-off date.
     node -e "const fs=require('fs');const p=JSON.parse(fs.readFileSync('package.json','utf8'));p.dependencies={};p.devDependencies={};fs.writeFileSync('package.json',JSON.stringify(p,null,2)+'\n')"
     rm -rf node_modules package-lock.json
-    # shellcheck disable=SC2046
-    npm install --save-exact --before="$BEFORE" $(latest "${deps[@]}")
-    # shellcheck disable=SC2046
-    npm install --save-exact --save-dev --before="$BEFORE" $(latest "${dev[@]}")
+    # shellcheck disable=SC2046,SC2086
+    npm install --save-exact --before="$BEFORE" $(latest $deps)
+    # shellcheck disable=SC2046,SC2086
+    npm install --save-exact --save-dev --before="$BEFORE" $(latest $dev)
     npm audit --omit=dev --audit-level=high
   )
 }
 
-install server SERVER_DEPS SERVER_DEV
-install web WEB_DEPS WEB_DEV
+install server "${SERVER_DEPS[*]}" "${SERVER_DEV[*]}"
+install web "${WEB_DEPS[*]}" "${WEB_DEV[*]}"
 
 echo
 echo "Done. Review the version changes (git diff */package.json), run the tests, then commit the lockfiles."

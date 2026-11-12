@@ -28,6 +28,20 @@ git add server/package*.json web/package*.json && git commit -m "Update dependen
 Also run `osv-scanner --lockfile server/package-lock.json --lockfile web/package-lock.json`
 if you have it installed.
 
+The bundled tracker's Python packages (`tracker/requirements.txt`, exact
+versions with hashes) are updated with [uv](https://docs.astral.sh/uv/), for
+the image's Python (3.14) and Linux, wheels only, 7-day cool-off:
+
+```bash
+cd tracker && uv pip compile requirements.in --upgrade --generate-hashes --no-header \
+  --python-version 3.14 --python-platform x86_64-manylinux_2_28 --only-binary :all: \
+  --exclude-newer "$(date -u -v-7d +%Y-%m-%dT00:00:00Z 2>/dev/null || date -u -d '-7 days' +%Y-%m-%dT00:00:00Z)" \
+  -o requirements.txt
+```
+
+Stay on Python 3.14 until `ephem` publishes wheels for a newer Python (checked
+2026-11-12: none for 3.15).
+
 ## 1. Linux PC: host hardening
 
 ```bash
