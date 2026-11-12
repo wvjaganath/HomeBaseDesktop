@@ -42,6 +42,27 @@ cd tracker && uv pip compile requirements.in --upgrade --generate-hashes --no-he
 Stay on Python 3.14 until `ephem` publishes wheels for a newer Python (checked
 2026-11-12: none for 3.15).
 
+MagicMirror² is pinned to a release commit in `deploy/mirror.Dockerfile`, but
+its dependencies come from `mirror/package-lock.json`: upstream's lockfile for
+that release with security fixes applied inside MagicMirror's own version
+ranges. Advisories keep arriving after a release ships, and the image build
+stops on any high/critical one, so refresh this lockfile with the other updates,
+and always when you move to a new MagicMirror release (the build refuses a
+lockfile from a different version):
+
+```bash
+COMMIT=f138f5b690ceab6450f55c852ac81d268363f563   # the commit in mirror.Dockerfile
+rm -rf /tmp/mm && mkdir /tmp/mm && cd /tmp/mm && git init -q \
+  && git fetch -q --depth 1 https://github.com/MagicMirrorOrg/MagicMirror.git "$COMMIT" && git checkout -q FETCH_HEAD
+npm audit fix --package-lock-only --ignore-scripts \
+  --before="$(date -u -v-7d +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -d '-7 days' +%Y-%m-%dT%H:%M:%SZ)"
+npm ci --omit=dev --omit=optional --ignore-scripts && npm audit --omit=dev --audit-level=high
+cp package-lock.json ~/Desktop/Claude/HomeBaseDesktop/mirror/package-lock.json   # your repo path
+```
+
+If `npm audit fix` can't clear a high finding without a major version
+(`--force`), don't force it: move to a newer MagicMirror release instead.
+
 ## 1. Linux PC: host hardening
 
 ```bash
