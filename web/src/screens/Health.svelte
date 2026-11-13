@@ -16,14 +16,15 @@
   const unit = 'in';
 
   // Dark categorical palette (dataviz reference, validated on this surface), fixed order.
+  // Same parts and order as the iPhone (2026-11-13): one arm and one thigh,
+  // kept in the original left-arm / left-thigh fields; right-side fields unused.
   const PARTS: Array<{ key: keyof MeasurementPayload; label: string; color: string }> = [
-    { key: 'waistCm', label: 'Waist', color: '#3987e5' },
-    { key: 'chestCm', label: 'Chest', color: '#d95926' },
     { key: 'neckCm', label: 'Neck', color: '#199e70' },
-    { key: 'leftArmCm', label: 'Left arm', color: '#c98500' },
-    { key: 'rightArmCm', label: 'Right arm', color: '#d55181' },
-    { key: 'leftThighCm', label: 'Left thigh', color: '#008300' },
-    { key: 'rightThighCm', label: 'Right thigh', color: '#9085e9' },
+    { key: 'leftArmCm', label: 'Arm', color: '#c98500' },
+    { key: 'chestCm', label: 'Chest', color: '#d95926' },
+    { key: 'waistCm', label: 'Waist', color: '#3987e5' },
+    { key: 'hipCm', label: 'Hip', color: '#9085e9' },
+    { key: 'leftThighCm', label: 'Thigh', color: '#008300' },
   ];
 
   let range = $state<Range>('3M');
@@ -94,7 +95,11 @@
   );
 
   const avg = (xs: Array<{ value: number }>): number | null => (xs.length ? xs.reduce((a, b) => a + b.value, 0) / xs.length : null);
-  const latestM = $derived(measurements.at(-1));
+  // Each part's latest logged value (entries often cover only some parts).
+  const latestOf = (key: keyof MeasurementPayload): number | null => {
+    const v = measurements.findLast((m) => typeof m[key] === 'number')?.[key];
+    return typeof v === 'number' ? v : null;
+  };
   const fmtLen = (cm: number | null | undefined): string => (cm === null || cm === undefined ? '—' : `${(cm / CM_PER_INCH).toFixed(1)} ${unit}`);
   const fmtDur = (s: number): string => (s >= 3600 ? `${Math.floor(s / 3600)} h ${Math.round((s % 3600) / 60)} min` : `${Math.round(s / 60)} min`);
   const prettyActivity = (t: string): string => t.replace(/([a-z])([A-Z])/g, '$1 $2').replace(/^./, (c) => c.toUpperCase());
@@ -157,7 +162,7 @@
       <fieldset class="parts">
         <legend class="sr-only">Body parts to show</legend>
         {#each PARTS as p (p.key)}
-          <label class="part"><input type="checkbox" bind:checked={shown[p.key]} /><span class="key" style:background={p.color}></span>{p.label} <span class="muted">{fmtLen(latestM?.[p.key] as number | null | undefined)}</span></label>
+          <label class="part"><input type="checkbox" bind:checked={shown[p.key]} /><span class="key" style:background={p.color}></span>{p.label} <span class="muted">{fmtLen(latestOf(p.key))}</span></label>
         {/each}
       </fieldset>
       <LineChart series={measureSeries} {unit} showLegend={false} signed={measureMode === 'change'} label={measureMode === 'change' ? 'Change in body measurements since the start of the range' : 'Body measurements over time'} />

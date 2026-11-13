@@ -70,6 +70,8 @@ export interface MeasurementPayload {
   leftThighCm: number | null;
   rightThighCm: number | null;
   waistCm: number | null;
+  /** Added 2026-11-13; missing on entries from older app versions. */
+  hipCm?: number | null;
 }
 export interface DailyFitnessPayload {
   date: string;

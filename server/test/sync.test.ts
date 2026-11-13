@@ -79,6 +79,7 @@ describe('sync protocol', () => {
 
   it('accepts body measurements of any size (no range limits) but still wants numbers', async () => {
     const a = await registerUser(app, 'a@example.com');
+    const hipId = randomUUID();
     // Values entered in inches arrive in cm: 15 in neck = 38.1 cm, 13 in arm = 33.02 cm.
     // The old ranges rejected these (and anything else) outright; now any finite number goes.
     const measurement = (overrides: Record<string, unknown>) => ({
@@ -93,12 +94,20 @@ describe('sync protocol', () => {
       headers: { authorization: `Bearer ${a.accessToken}` },
       payload: {
         changes: [
+          // An older app version: no hipCm at all.
           { collection: 'measurements', id: randomUUID(), updatedAt: new Date().toISOString(), deletedAt: null, payload: measurement({}) },
           { collection: 'measurements', id: randomUUID(), updatedAt: new Date().toISOString(), deletedAt: null, payload: measurement({ waistCm: 'thirty-four' }) },
+          { collection: 'measurements', id: hipId, updatedAt: new Date().toISOString(), deletedAt: null, payload: measurement({ hipCm: 101.6 }) },
+          { collection: 'measurements', id: randomUUID(), updatedAt: new Date().toISOString(), deletedAt: null, payload: measurement({ hipCm: 'wide' }) },
         ],
       },
     });
-    expect(res.json().results.map((r: { status: string }) => r.status)).toEqual(['applied', 'invalid']);
+    expect(res.json().results.map((r: { status: string }) => r.status)).toEqual(['applied', 'invalid', 'applied', 'invalid']);
+
+    // The hip value is kept (not stripped as an unknown key) and comes back on pull.
+    const pull = await app.inject({ method: 'GET', url: '/sync/pull?since=0', headers: { authorization: `Bearer ${a.accessToken}` } });
+    const items = pull.json().changes as Array<{ id: string; payload: { hipCm?: number } }>;
+    expect(items.find((c) => c.id === hipId)?.payload.hipCm).toBe(101.6);
   });
 
   it('accepts uppercase GUIDs as sent by the iOS app', async () => {

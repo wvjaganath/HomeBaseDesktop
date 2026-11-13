@@ -32,6 +32,8 @@ const measurementPayload = z.object({
   leftThighCm: bodyLengthCm,
   rightThighCm: bodyLengthCm,
   waistCm: bodyLengthCm,
+  // Added 2026-11-13. Optional so phones on an older app version still sync.
+  hipCm: bodyLengthCm.optional(),
 });
 
 const dailyFitnessPayload = z.object({
