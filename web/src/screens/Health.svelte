@@ -10,8 +10,10 @@
    * workouts (mirrored by the app) and manual body measurements.
    */
   type Gran = 'day' | 'month';
-  type Unit = 'cm' | 'in';
-  const UNIT_KEY = 'homebase.measureUnit';
+  // Body measurements are stored in centimetres and always shown in inches
+  // (the owner's choice, 2026-11-13; the cm/in switch was removed).
+  const CM_PER_INCH = 2.54;
+  const unit = 'in';
 
   // Dark categorical palette (dataviz reference, validated on this surface), fixed order.
   const PARTS: Array<{ key: keyof MeasurementPayload; label: string; color: string }> = [
@@ -26,27 +28,10 @@
 
   let range = $state<Range>('3M');
   let gran = $state<Gran>('day');
-  let unit = $state<Unit>(readUnit());
   let shown = $state<Record<string, boolean>>({ waistCm: true, chestCm: true, neckCm: true });
   // Body parts differ a lot in size (neck vs chest), so absolute lines look flat;
   // "Change" indexes every series to its first value in the range (one shared axis).
   let measureMode = $state<'change' | 'value'>('change');
-
-  function readUnit(): Unit {
-    try {
-      return localStorage.getItem(UNIT_KEY) === 'in' ? 'in' : 'cm';
-    } catch {
-      return 'cm';
-    }
-  }
-  function setUnit(u: Unit): void {
-    unit = u;
-    try {
-      localStorage.setItem(UNIT_KEY, u);
-    } catch {
-      // per-viewer convenience only
-    }
-  }
 
   const start = $derived(rangeStart(range));
   const days = $derived(
@@ -102,7 +87,7 @@
     PARTS.filter((p) => shown[p.key]).map((p) => {
       const pts = measurements
         .filter((m) => typeof m[p.key] === 'number')
-        .map((m) => ({ t: new Date(m.recordedAt).getTime(), v: (m[p.key] as number) / (unit === 'in' ? 2.54 : 1) }));
+        .map((m) => ({ t: new Date(m.recordedAt).getTime(), v: (m[p.key] as number) / CM_PER_INCH }));
       const base = pts[0]?.v ?? 0;
       return { name: p.label, color: p.color, points: measureMode === 'change' ? pts.map((x) => ({ t: x.t, v: x.v - base })) : pts };
     }),
@@ -110,7 +95,7 @@
 
   const avg = (xs: Array<{ value: number }>): number | null => (xs.length ? xs.reduce((a, b) => a + b.value, 0) / xs.length : null);
   const latestM = $derived(measurements.at(-1));
-  const fmtLen = (cm: number | null | undefined): string => (cm === null || cm === undefined ? '—' : `${(cm / (unit === 'in' ? 2.54 : 1)).toFixed(1)} ${unit}`);
+  const fmtLen = (cm: number | null | undefined): string => (cm === null || cm === undefined ? '—' : `${(cm / CM_PER_INCH).toFixed(1)} ${unit}`);
   const fmtDur = (s: number): string => (s >= 3600 ? `${Math.floor(s / 3600)} h ${Math.round((s % 3600) / 60)} min` : `${Math.round(s / 60)} min`);
   const prettyActivity = (t: string): string => t.replace(/([a-z])([A-Z])/g, '$1 $2').replace(/^./, (c) => c.toUpperCase());
 </script>
@@ -167,10 +152,6 @@
         <div class="seg push" role="group" aria-label="Show">
           <button class:on={measureMode === 'change'} onclick={() => (measureMode = 'change')}>Change</button>
           <button class:on={measureMode === 'value'} onclick={() => (measureMode = 'value')}>Size</button>
-        </div>
-        <div class="seg" role="group" aria-label="Units">
-          <button class:on={unit === 'cm'} onclick={() => setUnit('cm')}>cm</button>
-          <button class:on={unit === 'in'} onclick={() => setUnit('in')}>in</button>
         </div>
       </div>
       <fieldset class="parts">

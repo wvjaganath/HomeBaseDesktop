@@ -77,6 +77,30 @@ describe('sync protocol', () => {
     expect(res.json().results.map((r: { status: string }) => r.status)).toEqual(['invalid', 'applied']);
   });
 
+  it('accepts body measurements of any size (no range limits) but still wants numbers', async () => {
+    const a = await registerUser(app, 'a@example.com');
+    // Values entered in inches arrive in cm: 15 in neck = 38.1 cm, 13 in arm = 33.02 cm.
+    // The old ranges rejected these (and anything else) outright; now any finite number goes.
+    const measurement = (overrides: Record<string, unknown>) => ({
+      recordedAt: new Date().toISOString(),
+      neckCm: 38.1, chestCm: null, leftArmCm: 33.02, rightArmCm: 5, leftThighCm: 500,
+      rightThighCm: 0, waistCm: 86.36,
+      ...overrides,
+    });
+    const res = await app.inject({
+      method: 'POST',
+      url: '/sync/push',
+      headers: { authorization: `Bearer ${a.accessToken}` },
+      payload: {
+        changes: [
+          { collection: 'measurements', id: randomUUID(), updatedAt: new Date().toISOString(), deletedAt: null, payload: measurement({}) },
+          { collection: 'measurements', id: randomUUID(), updatedAt: new Date().toISOString(), deletedAt: null, payload: measurement({ waistCm: 'thirty-four' }) },
+        ],
+      },
+    });
+    expect(res.json().results.map((r: { status: string }) => r.status)).toEqual(['applied', 'invalid']);
+  });
+
   it('accepts uppercase GUIDs as sent by the iOS app', async () => {
     const a = await registerUser(app, 'a@example.com');
     const res = await app.inject({

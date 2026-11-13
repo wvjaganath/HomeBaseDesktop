@@ -20,15 +20,18 @@ export const refreshSchema = z.object({
   refreshToken: z.string().min(32).max(512),
 });
 
+// Body measurements are stored in centimetres; the apps show and take inches.
+// No range limits by the owner's choice (2026-11-13): any finite number.
+const bodyLengthCm = z.number().nullable();
 const measurementPayload = z.object({
   recordedAt: isoDate,
-  neckCm: z.number().min(20).max(80).nullable(),
-  chestCm: z.number().min(50).max(150).nullable(),
-  leftArmCm: z.number().min(15).max(60).nullable(),
-  rightArmCm: z.number().min(15).max(60).nullable(),
-  leftThighCm: z.number().min(30).max(90).nullable(),
-  rightThighCm: z.number().min(30).max(90).nullable(),
-  waistCm: z.number().min(40).max(150).nullable(),
+  neckCm: bodyLengthCm,
+  chestCm: bodyLengthCm,
+  leftArmCm: bodyLengthCm,
+  rightArmCm: bodyLengthCm,
+  leftThighCm: bodyLengthCm,
+  rightThighCm: bodyLengthCm,
+  waistCm: bodyLengthCm,
 });
 
 const dailyFitnessPayload = z.object({
