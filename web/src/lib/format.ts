@@ -135,3 +135,61 @@ const CARTO_TILES = 'https://basemaps.cartocdn.com/rastertiles/dark_all/{z}/{x}/
 export const tileUrl = (fromHub: string | undefined): string => (fromHub?.startsWith(`${CARTO_TILES}`) ? fromHub : CARTO_TILES);
 /** CARTO's terms ask for prominent credit to OpenStreetMap and CARTO. */
 export const MAP_CREDIT = '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors © <a href="https://carto.com/attributions" target="_blank" rel="noopener">CARTO</a>';
+
+// --- House ------------------------------------------------------------------
+
+/** A temperature stored in °C, in the hub's units: "71.6°" (or with the unit). */
+export function temperature(c: number | null | undefined, units: 'imperial' | 'metric', digits = 1, withUnit = false): string {
+  if (c === null || c === undefined) return '—';
+  const v = units === 'imperial' ? (c * 9) / 5 + 32 : c;
+  return `${v.toFixed(digits)}°${withUnit ? (units === 'imperial' ? 'F' : 'C') : ''}`;
+}
+
+/** °C → the hub's units, as a number (for inputs). */
+export const toUnits = (c: number, units: 'imperial' | 'metric'): number => (units === 'imperial' ? Math.round((c * 9) / 5 + 32) : Math.round(c));
+/** The hub's units → °C (for saving). */
+export const fromUnits = (v: number, units: 'imperial' | 'metric'): number => (units === 'imperial' ? Math.round(((v - 32) * 5) / 9 * 10) / 10 : v);
+
+/** 5.1 GB, 612 MB… (1000-based, like disk makers and node_exporter's users expect). */
+export function bytes(n: number | null | undefined, digits = 1): string {
+  if (n === null || n === undefined) return '—';
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  let i = 0;
+  let v = n;
+  while (v >= 1000 && i < units.length - 1) {
+    v /= 1000;
+    i += 1;
+  }
+  const shown = v >= 100 || i === 0 ? String(Math.round(v)) : v.toFixed(digits).replace(/\.0+$/, '');
+  return `${shown} ${units[i] ?? 'B'}`;
+}
+
+/** "used / total" with one unit when they share it: "5.1 / 16 GB". */
+export function usedOf(used: number | null, total: number | null): string {
+  if (used === null || total === null) return '—';
+  const t = bytes(total);
+  const u = bytes(used);
+  const [tv, tu] = t.split(' ');
+  const [uv, uu] = u.split(' ');
+  return tu === uu ? `${uv} / ${tv} ${tu}` : `${u} / ${t}`;
+}
+
+export const rateLabel = (bps: number | null): string => (bps === null ? '—' : `${bytes(bps)}/s`);
+
+/** "18 d", "6 h", "12 min". */
+export function uptime(sec: number | null): string {
+  if (sec === null) return '—';
+  if (sec >= 86_400) return `${Math.floor(sec / 86_400)} d`;
+  if (sec >= 3_600) return `${Math.floor(sec / 3_600)} h`;
+  return `${Math.max(1, Math.floor(sec / 60))} min`;
+}
+
+/** "1 min ago", "3 h ago". */
+export function ago(iso: string | null, now: Date): string {
+  if (!iso) return 'never';
+  const s = Math.max(0, (now.getTime() - Date.parse(iso)) / 1000);
+  if (s < 60) return 'just now';
+  if (s < 3_600) return `${Math.round(s / 60)} min ago`;
+  if (s < 86_400) return `${Math.round(s / 3_600)} h ago`;
+  return `${Math.round(s / 86_400)} d ago`;
+}

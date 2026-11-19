@@ -32,7 +32,13 @@
     | 'repeat'
     | 'rain'
     | 'shield'
-    | 'alert';
+    | 'alert'
+    | 'therm'
+    | 'server'
+    | 'board'
+    | 'house'
+    | 'battery'
+    | 'external';
 </script>
 
 <script lang="ts">
@@ -122,5 +128,17 @@
     <path d="M12 3l7.5 3v5.5c0 4.5-3.2 8.2-7.5 9.5-4.3-1.3-7.5-5-7.5-9.5V6z" /><path d="M8.5 12l2.5 2.5 4.5-5" />
   {:else if name === 'alert'}
     <path d="M12 3 2 20h20L12 3Z" /><path d="M12 10v4" /><path d="M12 17.5v.01" />
+  {:else if name === 'therm'}
+    <path d="M14 14.8V4.5a2 2 0 0 0-4 0v10.3a4 4 0 1 0 4 0z" /><path d="M12 9v7" />
+  {:else if name === 'server'}
+    <rect x="3" y="3.5" width="18" height="7" rx="2" /><rect x="3" y="13.5" width="18" height="7" rx="2" /><path d="M7 7h.01M7 17h.01" />
+  {:else if name === 'board'}
+    <rect x="4" y="5" width="16" height="14" rx="2" /><path d="M8 9h3v3H8zM14 9h2M14 12h2M8 15h8M9 2.5V5M15 2.5V5M9 19v2.5M15 19v2.5" />
+  {:else if name === 'house'}
+    <path d="M3.5 11 12 4l8.5 7" /><path d="M5.5 9.5V20h13V9.5" /><path d="M10 20v-5h4v5" />
+  {:else if name === 'battery'}
+    <rect x="2.5" y="7" width="17" height="10" rx="2" /><path d="M22 11v2" /><path d="M5.5 10v4" />
+  {:else if name === 'external'}
+    <path d="M14 4h6v6M20 4l-9 9" /><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5" />
   {/if}
 </svg>

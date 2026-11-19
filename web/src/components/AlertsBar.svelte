@@ -2,7 +2,8 @@
   import { hub } from '../lib/hub.svelte';
 
   let { note = '' }: { note?: string } = $props();
-  const alerts = $derived(hub.tracker?.alerts ?? []);
+  // Machines and room sensors first (they're about the house), then the sky's.
+  const alerts = $derived([...(hub.house?.alerts ?? []), ...(hub.tracker?.alerts ?? [])]);
   const trackerOk = $derived(hub.tracker?.reachable ?? false);
   const radarOk = $derived(!!hub.radar?.updatedAt && Date.now() - Date.parse(hub.radar.updatedAt) < 60_000);
 </script>

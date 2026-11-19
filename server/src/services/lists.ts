@@ -81,6 +81,16 @@ export function openReminders(db: DB, userId: string, now = new Date(), limit = 
   return { items: list.slice(0, limit), total: list.length };
 }
 
+/**
+ * Open reminders that are overdue or due in the next `days` days (through the
+ * end of the last day), soonest first: Home's "Next 7 days".
+ */
+export function weekReminders(db: DB, userId: string, now = new Date(), days = 7, limit = 40): { items: DashboardReminder[]; total: number } {
+  const end = new Date(now.getFullYear(), now.getMonth(), now.getDate() + days + 1).getTime();
+  const all = openReminders(db, userId, now, Number.MAX_SAFE_INTEGER).items.filter((r) => Date.parse(r.dueAt) < end);
+  return { items: all.slice(0, limit), total: all.length };
+}
+
 export function pinnedNotes(db: DB, userId: string, limit = 3): { items: DashboardNote[]; totalPinned: number } {
   const list: DashboardNote[] = [];
   for (const row of visibleRows(db, 'notes', userId)) {

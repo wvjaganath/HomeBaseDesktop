@@ -47,6 +47,12 @@ networks:
     ipam:
       config:
         - subnet: 172.30.89.0/24
+  # hub ↔ the Govee Bluetooth listener. No way out to the internet.
+  govee:
+    internal: true
+    ipam:
+      config:
+        - subnet: 172.30.90.0/24
 
 services:
   hub:
@@ -75,6 +81,8 @@ services:
       TRACKER_BUNDLED: "true"
       # So Settings can point the LED board at this server's feed (caddy :8081).
       TRACKER_FEED_PORT: ${TRACKER_FEED_PORT:-8081}
+      # The Govee Bluetooth listener (below), when GOVEE_URL is set in deploy/.env.
+      GOVEE_URL: ${GOVEE_URL:-}
     volumes:
       - ./data:/data
       - ./backups:/backups
@@ -87,6 +95,8 @@ services:
         ipv4_address: 172.30.88.20
       tracker:
         ipv4_address: 172.30.89.20
+      govee:
+        ipv4_address: 172.30.90.20
     ports:
       # The iPhones' saved address. Browsers should use https:// (Caddy).
       - "3000:3000"
@@ -189,6 +199,38 @@ services:
     mem_limit: 256m
     cpus: 0.5
     pids_limit: 128
+
+  # Govee room sensors over Bluetooth (../govee/listener.py). Optional: it runs
+  # when deploy/.env has COMPOSE_PROFILES=govee (and GOVEE_URL for the hub).
+  # It reaches the PC's Bluetooth through the host's D-Bus socket, as a member
+  # of the host's `bluetooth` group (BLUETOOTH_GID in deploy/.env). It only
+  # listens; it never connects to a sensor or to the internet.
+  govee:
+    <<: *hardening
+    profiles: ["govee"]
+    build:
+      context: ..
+      dockerfile: deploy/govee.Dockerfile
+      args:
+        PYTHON_IMAGE: ${PYTHON_IMAGE:-python:3.14-slim}
+    image: homebase-govee:local
+    # Without BLUETOOTH_GID (getent group bluetooth | cut -d: -f3) it falls back
+    # to "nogroup" and Settings → House shows a Bluetooth permission error.
+    group_add:
+      - "${BLUETOOTH_GID:-65534}"
+    environment:
+      TZ: ${TZ:-America/Chicago}
+      GOVEE_ADAPTER: ${GOVEE_ADAPTER:-}
+    volumes:
+      - /run/dbus/system_bus_socket:/run/dbus/system_bus_socket
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    networks:
+      govee:
+        ipv4_address: 172.30.90.40
+    mem_limit: 128m
+    cpus: 0.25
+    pids_limit: 64
 
   # One-off helper: downloads the airline logo set into ./data/logo-src, at
   # one exact commit (so what you get can't change under you). To update,

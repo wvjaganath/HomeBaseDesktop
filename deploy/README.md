@@ -63,6 +63,18 @@ cp package-lock.json ~/Desktop/Claude/HomeBaseDesktop/mirror/package-lock.json  
 If `npm audit fix` can't clear a high finding without a major version
 (`--force`), don't force it: move to a newer MagicMirror release instead.
 
+The Govee Bluetooth listener's Python packages (`govee/requirements.txt`) are
+updated the same way as the tracker's, for both x86_64 (the PC) and arm64 (a
+Pi listener) since the wheels are pure-Python or published for both:
+
+```bash
+cd govee && uv pip compile requirements.in --upgrade --generate-hashes --no-header \
+  --python-version 3.14 --python-platform x86_64-manylinux_2_28 --only-binary :all: \
+  --exclude-newer "$(date -u -v-7d +%Y-%m-%dT00:00:00Z 2>/dev/null || date -u -d '-7 days' +%Y-%m-%dT00:00:00Z)" \
+  -o requirements.txt
+python -m unittest test_listener.py      # with govee-ble installed; no Bluetooth needed
+```
+
 ## 1. Linux PC: host hardening
 
 ```bash
@@ -112,7 +124,8 @@ Check: `curl http://<pc-ip>:3000/health` → `{"ok":true}`.
 | **Settings → Hub** (browser) | Sign-up on/off, how long sign-ins last, radar on/off, range and how often it asks for planes, ADS-B contact, the CARTO map key, the LED board's address, backups, log detail. Saved on the hub, applied straight away. |
 | **Settings → Plane tracker** (browser) | Home location, units, zone, flights, API keys… The radar, maps and MagicMirror use this home location and units too, so they're set once. |
 | `deploy/hub.env` | `JWT_SECRET` only (plus the optional `SECRETS_KEY`). They sign sign-ins and encrypt saved secrets, so they can't be stored in the database they protect. |
-| `deploy/.env` | Docker-level: ports (`HTTPS_PORT`, `HTTP_PORT`, `TRACKER_FEED_PORT`), `HUB_HOSTS`, the time zone `TZ` (every container), image versions, `LOGOS_COMMIT`. A running app can't change these. |
+| **Settings → House** (browser) | The machines the House tab shows (their node_exporter addresses, Cockpit links), extra Govee listeners, sensor names and which show on Home, and when to warn. §10. |
+| `deploy/.env` | Docker-level: ports (`HTTPS_PORT`, `HTTP_PORT`, `TRACKER_FEED_PORT`), `HUB_HOSTS`, the time zone `TZ` (every container), image versions, `LOGOS_COMMIT`, and the Govee listener (`COMPOSE_PROFILES=govee`, `GOVEE_URL`, `BLUETOOTH_GID`, `GOVEE_ADAPTER`, §10). A running app can't change these. |
 
 Upgrading from a version with more lines in `hub.env`: on its first start the
 hub copies those values into Settings once, and **Settings → Hub** lists the
@@ -405,3 +418,119 @@ from this folder and uses files beside it (`hub.env`, `.env`, `data/`,
 `caddy/`, `../mirror/config`), which a Portainer-deployed copy wouldn't have.
 Keep `update.sh`, `stop.sh` and `start.sh` as the way to change it, and
 Portainer for watching it, logs, and stop/start.
+
+## 10. House: machines and room sensors
+
+The **House** tab (and the Machines and Rooms cards on Home) shows the health
+of the PC and the Pis, and the temperature and humidity in each room. All of it
+stays on the home network: the hub reads each machine's **node_exporter** and
+asks a small **Bluetooth listener** for what the Govee sensors broadcast.
+
+### Machines (node_exporter)
+
+On **each** machine (this PC running Ubuntu Server, the kiosk Pi, the LED board Pi):
+
+```bash
+sudo apt install -y prometheus-node-exporter     # starts at boot, port 9100, read-only stats
+curl -s http://localhost:9100/metrics | head -3  # check
+```
+
+Firewall: node_exporter answers anyone who can reach port 9100, so keep it to
+the home network. On **this PC** (ufw from §1) allow the LAN, and the hub's
+Docker networks (the hub reads this PC through its LAN address, which arrives
+from a Docker address):
+
+```bash
+sudo ufw allow from 192.168.1.0/24 to any port 9100 proto tcp
+sudo ufw allow from 172.30.0.0/16 to any port 9100 proto tcp
+```
+
+The Pis have no firewall by default; they're on the home network only.
+
+Optional, on each **Pi**: power and heat warnings (weak power supply, slowed
+down). This writes `vcgencmd get_throttled` for node_exporter once a minute:
+
+```bash
+scp deploy/house/rpi-throttled.sh pi@<pi-ip>:
+ssh pi@<pi-ip> 'sudo install -m 755 rpi-throttled.sh /usr/local/bin/homebase-rpi-throttled && \
+  echo "* * * * * root /usr/local/bin/homebase-rpi-throttled" | sudo tee /etc/cron.d/homebase-rpi-throttled'
+```
+
+Then **Settings → House → Machines → Add a machine**: a name, the address
+`http://<ip>:9100` (use IP addresses; `.local` names usually don't resolve
+inside Docker), Computer or Raspberry Pi, and optionally the Cockpit address
+(`https://<pc-ip>:9090`) for an "Open Cockpit" button. **Test** reads it once.
+Readings every 15 s (changeable); the last hour is kept for the graphs (in
+memory, nothing written to disk).
+
+### Room sensors (Govee, over Bluetooth)
+
+Govee thermometer-hygrometers that broadcast over **Bluetooth** work: H5075,
+H5072, H5074, H5101, H5102, H5104, H5174, H5177, H5179 and others that
+[govee-ble](https://github.com/Bluetooth-Devices/govee-ble) decodes. The
+listener only listens: no Govee account, no internet, nothing is sent to a
+sensor. **The H5107 (sold with the H5043 gateway) is not one of them**: it
+talks to its gateway over LoRa radio, which Bluetooth can't hear.
+
+The listener runs next to the hub, using this PC's Bluetooth (BlueZ):
+
+```bash
+bluetoothctl list                          # a controller should be listed
+getent group bluetooth | cut -d: -f3       # → the number for BLUETOOTH_GID
+cat >> deploy/.env <<'EOT'
+COMPOSE_PROFILES=govee
+GOVEE_URL=http://govee:8686
+BLUETOOTH_GID=<that number>
+EOT
+./deploy/update.sh                         # builds and starts the `govee` container
+docker compose logs -f govee               # "scanning for Govee sensors"
+```
+
+`pin-images.sh` keeps these lines. The container is read-only, unprivileged,
+on an internal network with no internet, and reaches Bluetooth only through
+the host's D-Bus socket as a member of the `bluetooth` group. `GOVEE_ADAPTER=hci1`
+picks another adapter if the PC has more than one.
+
+Sensors appear in **Settings → House** within a minute of being heard, switched
+**off**: name each one after its room and switch it on to show it on Home (so a
+neighbour's sensor never appears). The hub keeps 5-minute averages for 30 days
+for the House tab's charts. Each sensor's **Signal** shows how well this PC
+hears it: a sensor marked Weak, or not heard at all, is too far away.
+
+**A sensor too far from this PC:** run the same listener on a Pi near it and add
+the Pi's address under **More listeners** (`http://<pi-ip>:8686`). On the Pi:
+
+```bash
+sudo apt install -y python3-venv bluez
+sudo mkdir -p /opt/homebase-govee && sudo chown pi /opt/homebase-govee
+scp govee/listener.py govee/requirements.txt pi@<pi-ip>:/opt/homebase-govee/
+ssh pi@<pi-ip>
+cd /opt/homebase-govee && python3 -m venv venv && venv/bin/pip install --require-hashes -r requirements.txt
+sudo tee /etc/systemd/system/homebase-govee.service >/dev/null <<'EOT'
+[Unit]
+Description=HomeBase Govee Bluetooth listener
+After=bluetooth.service network-online.target
+[Service]
+User=pi
+SupplementaryGroups=bluetooth
+ExecStart=/opt/homebase-govee/venv/bin/python /opt/homebase-govee/listener.py
+Restart=always
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+[Install]
+WantedBy=multi-user.target
+EOT
+sudo systemctl enable --now homebase-govee
+```
+
+(`requirements.txt` is pinned for Python 3.14; on an older Pi OS Python, compile
+it again with `--python-version` set to the Pi's.)
+
+**Troubleshooting** (Settings → House shows each listener's state):
+- *Bluetooth isn't scanning: … not authorized / access denied*: `BLUETOOTH_GID` is
+  missing or wrong in `deploy/.env`.
+- *… No Bluetooth adapters found / org.bluez not found*: `sudo apt install bluez`,
+  `sudo systemctl enable --now bluetooth`, `rfkill unblock bluetooth`.
+- *The listener can't be reached*: `docker compose ps govee` and its logs.
+

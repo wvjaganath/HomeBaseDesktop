@@ -7,6 +7,10 @@ import { BackupService } from './services/backup.js';
 import { SecretBox } from './security/secretBox.js';
 import { CalendarService } from './services/calendar.js';
 import { HomeLocation } from './services/home.js';
+import { HouseService } from './services/house.js';
+import { HouseSettingsService } from './services/houseSettings.js';
+import { MachinesService } from './services/machines.js';
+import { RoomsService } from './services/rooms.js';
 import { HubSettingsService, type HubSettings } from './services/hubSettings.js';
 import { RadarService } from './services/radar.js';
 import { RouteLookupService } from './services/routeLookup.js';
@@ -30,6 +34,10 @@ export interface AppContext {
   usage: UsageLog;
   calendar: CalendarService;
   backup: BackupService;
+  /** Settings → House: machines, Govee listeners, alert limits. */
+  houseSettings: HouseSettingsService;
+  /** Machines (node_exporter) and room sensors (Govee over Bluetooth). */
+  house: HouseService;
 }
 
 export function createContext(env: Env, db: DB, log: FastifyBaseLogger): AppContext {
@@ -42,6 +50,14 @@ export function createContext(env: Env, db: DB, log: FastifyBaseLogger): AppCont
   const routes = new RouteLookupService(env, view, usage);
   // Routes the tracker's lookup couldn't find come from adsbdb's schedule data.
   const tracker = new TrackerService(env, bus, log.child({ svc: 'tracker' }), { routes, units: () => home.units });
+  const houseSettings = new HouseSettingsService(db);
+  const house = new HouseService(
+    houseSettings,
+    new MachinesService(houseSettings, log.child({ svc: 'machines' })),
+    new RoomsService(db, houseSettings, env.GOVEE_URL, log.child({ svc: 'rooms' })),
+    () => home.units,
+    bus,
+  );
   return {
     env,
     db,
@@ -57,5 +73,7 @@ export function createContext(env: Env, db: DB, log: FastifyBaseLogger): AppCont
     usage,
     calendar: new CalendarService(db, secretBox, bus, log.child({ svc: 'calendar' })),
     backup: new BackupService(db, env, log.child({ svc: 'backup' }), view),
+    houseSettings,
+    house,
   };
 }

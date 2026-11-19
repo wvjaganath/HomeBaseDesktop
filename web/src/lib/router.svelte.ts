@@ -1,6 +1,6 @@
 import type { Tab } from './types';
 
-const TABS: Tab[] = ['home', 'flights', 'radar', 'calendar', 'notes', 'reminders', 'fitness', 'nutrition', 'health', 'mirror', 'settings'];
+const TABS: Tab[] = ['home', 'flights', 'radar', 'calendar', 'notes', 'reminders', 'fitness', 'nutrition', 'health', 'house', 'mirror', 'settings'];
 
 function parse(hash: string): Tab | 'login' | 'kiosk' | 'reset' | 'tracker-settings' | 'tracker' {
   const name = hash.replace(/^#\/?/, '').split(/[/?]/)[0] ?? '';

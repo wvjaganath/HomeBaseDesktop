@@ -33,21 +33,24 @@ const isLanHost = (host: string): boolean => {
   return parts.length === 1 || LAN_SUFFIXES.some((sfx) => h.endsWith(`.${sfx}`));
 };
 
-/** http(s)://host[:port] on the home network, no path. */
-export const lanBaseUrl = z
-  .string()
-  .trim()
-  .max(200)
-  .refine((v) => {
-    if (v === '') return true;
-    try {
-      const u = new URL(v);
-      return (u.protocol === 'http:' || u.protocol === 'https:') && !u.username && !u.password && (u.pathname === '/' || u.pathname === '') && !u.search && !u.hash && isLanHost(u.hostname);
-    } catch {
-      return false;
-    }
-  }, 'Use the board’s home-network address, like http://192.168.1.60:8080')
-  .transform((v) => v.replace(/\/$/, ''));
+/** http(s)://host[:port] on the home network, no path ('' allowed = not set). */
+export const lanBaseUrlWith = (message: string) =>
+  z
+    .string()
+    .trim()
+    .max(200)
+    .refine((v) => {
+      if (v === '') return true;
+      try {
+        const u = new URL(v);
+        return (u.protocol === 'http:' || u.protocol === 'https:') && !u.username && !u.password && (u.pathname === '/' || u.pathname === '') && !u.search && !u.hash && isLanHost(u.hostname);
+      } catch {
+        return false;
+      }
+    }, message)
+    .transform((v) => v.replace(/\/$/, ''));
+
+export const lanBaseUrl = lanBaseUrlWith('Use the board’s home-network address, like http://192.168.1.60:8080');
 
 const LOG_LEVELS = ['error', 'warn', 'info', 'debug'] as const;
 

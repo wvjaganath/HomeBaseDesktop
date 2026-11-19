@@ -15,6 +15,7 @@
     { tab: 'flights', label: 'Flights', icon: 'plane' },
     { tab: 'radar', label: 'Radar', icon: 'radar' },
     { tab: 'calendar', label: 'Calendar', icon: 'calendar' },
+    { tab: 'house', label: 'House', icon: 'house' },
   ];
   // Editing sections need a signed-in person; kiosk screens are read-only.
   const modules: Item[] = [

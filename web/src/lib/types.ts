@@ -138,7 +138,131 @@ export interface DashboardNote {
 
 export interface Lists {
   reminders: { items: DashboardReminder[]; total: number };
+  /** Overdue + due in the next 7 days (Home's "Next 7 days"). */
+  week?: { items: DashboardReminder[]; total: number };
   notes: { items: DashboardNote[]; totalPinned: number };
+}
+
+// --- House: machines (node_exporter) and room sensors (Govee) ---------------
+
+export interface MachineStatus {
+  id: string;
+  name: string;
+  kind: 'pc' | 'pi';
+  cockpitUrl: string;
+  host: string;
+  online: boolean;
+  lastSeenAt: string | null;
+  offlineSince: string | null;
+  error: string | null;
+  uptimeSec: number | null;
+  cpuPct: number | null;
+  cores: number;
+  memUsed: number | null;
+  memTotal: number | null;
+  diskUsed: number | null;
+  diskTotal: number | null;
+  tempC: number | null;
+  load: [number, number, number] | null;
+  netRxBps: number | null;
+  netTxBps: number | null;
+  os: string | null;
+  hostname: string | null;
+  arch: string | null;
+  power: { underVoltageNow: boolean; throttledNow: boolean; underVoltageSinceBoot: boolean; throttledSinceBoot: boolean } | null;
+}
+
+export interface RoomSensor {
+  address: string;
+  model: string | null;
+  bleName: string;
+  name: string;
+  shown: boolean;
+  position: number;
+  firstSeenAt: string;
+  lastSeenAt: string;
+  tempC: number | null;
+  humidity: number | null;
+  battery: number | null;
+  rssi: number | null;
+  stale: boolean;
+  heardBy: string | null;
+}
+
+export interface RoomSummary extends RoomSensor {
+  spark: Array<number | null>;
+}
+
+export interface HouseAlert {
+  level: 'red' | 'orange' | 'yellow';
+  text: string;
+}
+
+export interface HouseSummary {
+  version: number;
+  machines: MachineStatus[];
+  rooms: RoomSummary[];
+  roomsEnabled: boolean;
+  newSensors: number;
+  alerts: HouseAlert[];
+}
+
+export interface MachinePoint {
+  t: number;
+  cpu: number | null;
+  mem: number | null;
+  disk: number | null;
+  tempC: number | null;
+}
+
+export interface HouseHistory {
+  range: '24h' | '7d' | '30d';
+  machines: Record<string, MachinePoint[]>;
+  rooms: Record<string, Array<{ t: number; tempC: number | null; humidity: number | null }>>;
+}
+
+export interface MachineConfig {
+  id: string;
+  name: string;
+  url: string;
+  kind: 'pc' | 'pi';
+  cockpitUrl: string;
+}
+
+export interface HouseSettings {
+  machines: MachineConfig[];
+  listeners: string[];
+  pollSec: 10 | 15 | 30 | 60;
+  alerts: {
+    offlineMin: number;
+    cpuTempMaxC: number;
+    diskPct: number;
+    memPct: number;
+    roomMaxC: number | null;
+    roomMinC: number | null;
+    humidityMax: number | null;
+    batteryMin: number;
+    sensorStaleMin: number;
+  };
+}
+
+export interface ListenerStatus {
+  label: string;
+  bundled: boolean;
+  ok: boolean;
+  scanning: boolean | null;
+  adapter: string | null;
+  error: string | null;
+  lastOkAt: string | null;
+  heard: number;
+}
+
+export interface HouseSettingsView {
+  settings: HouseSettings;
+  sensors: RoomSensor[];
+  listeners: ListenerStatus[];
+  bundledListener: boolean;
+  units: 'imperial' | 'metric';
 }
 
 export interface HubConfig {
@@ -171,15 +295,16 @@ export type Tab =
   | 'fitness'
   | 'nutrition'
   | 'health'
+  | 'house'
   | 'mirror'
   | 'settings';
 
 export interface DeviceSettings {
-  startTab: 'home' | 'flights' | 'radar' | 'calendar' | 'mirror';
+  startTab: 'home' | 'flights' | 'radar' | 'calendar' | 'house' | 'mirror';
   autoFocus: boolean;
   boardTheme: 'led' | 'clean';
   night: { enabled: boolean; start: string; end: string; mode: 'dim' | 'black' };
-  rotate: { enabled: boolean; tabs: Array<'home' | 'flights' | 'radar' | 'calendar' | 'mirror'>; seconds: number };
+  rotate: { enabled: boolean; tabs: Array<'home' | 'flights' | 'radar' | 'calendar' | 'house' | 'mirror'>; seconds: number };
 }
 
 export type Me =

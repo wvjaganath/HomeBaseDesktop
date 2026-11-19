@@ -10,7 +10,7 @@ const querySchema = z.object({
     .string()
     .max(100)
     .default('tracker,items,calendar')
-    .transform((s) => new Set(s.split(',').filter((t) => ['tracker', 'radar', 'items', 'calendar'].includes(t)))),
+    .transform((s) => new Set(s.split(',').filter((t) => ['tracker', 'radar', 'items', 'calendar', 'house'].includes(t)))),
 });
 
 /**
@@ -18,7 +18,7 @@ const querySchema = z.object({
  * upstream sources and pushes small updates; screens never poll.
  */
 export default async function streamRoutes(app: FastifyInstance): Promise<void> {
-  const { bus, tracker, radar } = app.ctx;
+  const { bus, tracker, radar, house } = app.ctx;
   let open = 0;
   const perPrincipal = new Map<string, number>();
 
@@ -59,6 +59,22 @@ export default async function streamRoutes(app: FastifyInstance): Promise<void> 
       radar.touch();
       send('radar', radar.snapshot);
       unsubs.push(bus.on('radar', () => send('radar', radar.snapshot)));
+    }
+    if (topics.has('house')) {
+      send('house', house.summary());
+      // Machines report every 15 s; coalesce bursts into one push per second.
+      let pending: NodeJS.Timeout | null = null;
+      unsubs.push(() => {
+        if (pending) clearTimeout(pending);
+      });
+      unsubs.push(
+        bus.on('house', () => {
+          pending ??= setTimeout(() => {
+            pending = null;
+            send('house', house.summary());
+          }, 1_000);
+        }),
+      );
     }
     if (topics.has('items')) {
       unsubs.push(

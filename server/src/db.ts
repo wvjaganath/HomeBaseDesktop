@@ -112,6 +112,30 @@ const migrations: string[] = [
     PRIMARY KEY (day, service)
   );
   `,
+  // 2026-11: Govee room sensors heard over Bluetooth, and their 5-minute averages.
+  `
+  CREATE TABLE room_sensors (
+    address TEXT PRIMARY KEY,
+    model TEXT,
+    ble_name TEXT NOT NULL DEFAULT '',
+    name TEXT NOT NULL DEFAULT '',
+    shown INTEGER NOT NULL DEFAULT 0,
+    position INTEGER NOT NULL DEFAULT 0,
+    first_seen_at TEXT NOT NULL,
+    last_seen_at TEXT NOT NULL,
+    temp_c REAL,
+    humidity REAL,
+    battery INTEGER,
+    rssi INTEGER
+  );
+  CREATE TABLE room_samples (
+    address TEXT NOT NULL REFERENCES room_sensors(address) ON DELETE CASCADE,
+    bucket INTEGER NOT NULL,
+    temp_c REAL,
+    humidity REAL,
+    PRIMARY KEY (address, bucket)
+  );
+  `,
 ];
 
 export function openDb(dbPath: string): DB {

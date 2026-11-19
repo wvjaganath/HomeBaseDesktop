@@ -3,6 +3,7 @@
   import StatusPanel from '../components/StatusPanel.svelte';
   import PeoplePanel from '../components/PeoplePanel.svelte';
   import HubSettingsPanel from '../components/HubSettingsPanel.svelte';
+  import HousePanel from '../components/HousePanel.svelte';
   import ChangePassword from '../components/ChangePassword.svelte';
   import { ApiError, api } from '../lib/api';
   import { hub } from '../lib/hub.svelte';
@@ -136,7 +137,7 @@
     onSignedOut();
   }
 
-  const tabs = ['home', 'flights', 'radar', 'calendar', 'mirror'] as const;
+  const tabs = ['home', 'flights', 'radar', 'calendar', 'house', 'mirror'] as const;
 </script>
 
 <div class="settings">
@@ -249,6 +250,8 @@
   <StatusPanel />
 
   <HubSettingsPanel />
+
+  <HousePanel />
 
   <PeoplePanel />
 

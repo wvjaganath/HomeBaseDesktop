@@ -17,6 +17,7 @@ import mirrorRoutes from './routes/mirror.js';
 import statusRoutes from './routes/status.js';
 import peopleRoutes from './routes/people.js';
 import hubSettingsRoutes from './routes/hubSettings.js';
+import houseRoutes from './routes/house.js';
 import mirrorBootstrapRoutes from './routes/mirrorBootstrap.js';
 import trackerDataRoutes from './routes/trackerData.js';
 import trackerSettingsRoutes from './routes/trackerSettings.js';
@@ -156,6 +157,7 @@ export async function buildApp(opts: BuildOptions): Promise<FastifyInstance> {
   await app.register(trackerDataRoutes);
   await app.register(hubSettingsRoutes);
   await app.register(mirrorBootstrapRoutes);
+  await app.register(houseRoutes);
 
   if (fs.existsSync(webDist)) {
     await app.register(fastifyStatic, {
@@ -184,6 +186,7 @@ export async function buildApp(opts: BuildOptions): Promise<FastifyInstance> {
     ctx.home.start();
     ctx.calendar.start();
     ctx.backup.start();
+    ctx.house.start();
   }
   app.addHook('onClose', async () => {
     ctx.tracker.stop();
@@ -191,6 +194,7 @@ export async function buildApp(opts: BuildOptions): Promise<FastifyInstance> {
     ctx.home.stop();
     ctx.calendar.stop();
     ctx.backup.stop();
+    ctx.house.stop();
     db.close();
   });
 

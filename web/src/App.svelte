@@ -24,6 +24,7 @@
     fitness: () => import('./screens/Fitness.svelte'),
     nutrition: () => import('./screens/Nutrition.svelte'),
     health: () => import('./screens/Health.svelte'),
+    house: () => import('./screens/House.svelte'),
     mirror: () => import('./screens/Mirror.svelte'),
     'tracker-settings': () => import('./screens/TrackerSettings.svelte'),
     tracker: () => import('./screens/PlaneLog.svelte'),

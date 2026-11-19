@@ -1,6 +1,6 @@
 import { api, refreshSession } from './api';
 import { sync } from './sync.svelte';
-import type { HubConfig, Lists, Me, RadarSnapshot, TrackerState } from './types';
+import type { HouseSummary, HubConfig, Lists, Me, RadarSnapshot, TrackerState } from './types';
 
 /**
  * Global reactive state, fed by one Server-Sent Events connection.
@@ -12,6 +12,8 @@ class Hub {
   tracker = $state<TrackerState | null>(null);
   radar = $state<RadarSnapshot | null>(null);
   lists = $state<Lists | null>(null);
+  /** Machines and room sensors (House), pushed when either changes. */
+  house = $state<HouseSummary | null>(null);
   /** Bumped when calendar data changed server-side; calendar views refetch. */
   calendarVersion = $state(0);
   connected = $state(false);
@@ -55,7 +57,7 @@ class Hub {
   private connect(): void {
     this.es?.close();
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
-    const topics = ['tracker', 'items', 'calendar', ...(this.wantRadar ? ['radar'] : [])].join(',');
+    const topics = ['tracker', 'items', 'calendar', 'house', ...(this.wantRadar ? ['radar'] : [])].join(',');
     const es = new EventSource(`/api/stream?topics=${topics}`);
     this.es = es;
 
@@ -74,6 +76,9 @@ class Hub {
     });
     es.addEventListener('radar', (e) => {
       this.radar = (JSON.parse((e as MessageEvent<string>).data) as { data: RadarSnapshot }).data;
+    });
+    es.addEventListener('house', (e) => {
+      this.house = JSON.parse((e as MessageEvent<string>).data) as HouseSummary;
     });
     es.addEventListener('items', () => {
       void this.refreshLists();

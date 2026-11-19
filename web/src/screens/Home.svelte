@@ -2,11 +2,12 @@
   import AlertsBar from '../components/AlertsBar.svelte';
   import FlightHero from '../components/FlightHero.svelte';
   import Icon from '../components/Icon.svelte';
-  import MonthCalendar from '../components/MonthCalendar.svelte';
-  import NotesCard from '../components/NotesCard.svelte';
-  import RemindersCard from '../components/RemindersCard.svelte';
+  import CalendarMini from '../components/CalendarMini.svelte';
+  import MachinesCard from '../components/MachinesCard.svelte';
+  import NextDays from '../components/NextDays.svelte';
+  import NotesStack from '../components/NotesStack.svelte';
+  import RoomsCard from '../components/RoomsCard.svelte';
   import TopBar from '../components/TopBar.svelte';
-  import UpNext from '../components/UpNext.svelte';
   import { distUnit } from '../lib/format';
   import { hub } from '../lib/hub.svelte';
 
@@ -21,16 +22,26 @@
   const focus = $derived(autoFocus && flights.length > 0 ? flights[0] : undefined);
   const units = $derived(hub.config?.units ?? 'imperial');
   const radarCount = $derived(hub.radar?.aircraft.filter((a) => a.distance <= (units === 'metric' ? 40 : 25)).length ?? 0);
+
+  const radarSize = 220;
+
+  // Home is drawn for the 1920×1080 kiosk. On a smaller screen (a 720p
+  // monitor, a laptop window) everything shrinks evenly instead of crowding;
+  // the layout still fills the width. Never scaled up.
+  let cw = $state(1920);
+  let ch = $state(1080);
+  const k = $derived(Math.min(1, ch / 1080, cw / 1824));
 </script>
 
-<div class="home">
+<div class="fit" bind:clientWidth={cw} bind:clientHeight={ch}>
+<div class="home" style:zoom={k === 1 ? undefined : k} style:width={`${cw / k}px`} style:height={`${ch / k}px`}>
   <TopBar compact={!!focus} />
 
   {#if focus}
     <div class="body focus">
       <div class="side">
-        <UpNext limit={3} />
-        <RemindersCard limit={2} />
+        <NextDays days={2} title="Today & tomorrow" />
+        <RoomsCard compact max={4} />
       </div>
       <section class="card flightcard">
         <span class="badge"><Icon name="plane" size={18} />Overhead now{flights.length > 1 ? ` · 1 of ${flights.length}` : ''}</span>
@@ -39,36 +50,37 @@
     </div>
   {:else}
     <div class="body idle">
-      <MonthCalendar maxPerDay={3} />
-      <div class="right">
-        <section class="card sky">
-          <!-- The live map pulls in Leaflet, so it loads after the rest of Home. -->
-          {#await import('../components/MiniRadar.svelte')}
-            <div class="radar-wait" style:width="220px" style:height="220px"></div>
-          {:then { default: MiniRadar }}
-            <MiniRadar size={220} radiusMi={25} />
-          {/await}
-          <div class="skytext">
-            <span class="label accent"><Icon name="plane" size={20} />Sky</span>
-            {#if hub.config?.trackerEnabled === false && hub.config?.radarEnabled === false}
-              <span class="big">Flight data is off</span>
-              <span class="muted">Set the home location in Settings → Plane tracker → Location.</span>
-            {:else}
-              <span class="big">No plane in your box</span>
-              <span class="muted">{radarCount} aircraft within {units === 'metric' ? 40 : 25} {distUnit(units)}</span>
-            {/if}
-            <span class="credit">Map © OpenStreetMap contributors © CARTO · Aircraft: adsb.lol / adsb.fi</span>
-          </div>
-        </section>
-        <div class="lists">
-          <RemindersCard limit={4} />
-          <NotesCard maxItems={5} />
+      <CalendarMini />
+      <section class="card sky">
+        <!-- The live map pulls in Leaflet, so it loads after the rest of Home. -->
+        {#await import('../components/MiniRadar.svelte')}
+          <div class="radar-wait" style:width={`${radarSize}px`} style:height={`${radarSize}px`}></div>
+        {:then { default: MiniRadar }}
+          <MiniRadar size={radarSize} radiusMi={25} />
+        {/await}
+        <div class="skytext">
+          <span class="label accent"><Icon name="plane" size={20} />Sky</span>
+          {#if hub.config?.trackerEnabled === false && hub.config?.radarEnabled === false}
+            <span class="big">Flight data is off</span>
+            <span class="muted">Set the home location in Settings → Plane tracker → Location.</span>
+          {:else}
+            <span class="big">No plane in your box</span>
+            <span class="muted">{radarCount} aircraft within {units === 'metric' ? 40 : 25} {distUnit(units)}</span>
+          {/if}
+          <span class="credit">Map © OpenStreetMap contributors © CARTO · Aircraft: adsb.lol / adsb.fi</span>
         </div>
+      </section>
+      <RoomsCard />
+      <div class="bottom">
+        <NextDays days={7} columns={2} />
+        <NotesStack />
+        <MachinesCard />
       </div>
     </div>
   {/if}
 
   <AlertsBar />
+</div>
 </div>
 
 <style>
@@ -82,8 +94,11 @@
     font-size: 12px;
     color: var(--muted);
   }
-  .home {
+  .fit {
     height: 100%;
+    overflow: hidden;
+  }
+  .home {
     padding: 36px 52px 30px;
     display: flex;
     flex-direction: column;
@@ -95,31 +110,43 @@
     display: grid;
     gap: 26px;
   }
+  /* Layout B: month · sky · rooms on top; the week (wide), notes (narrow)
+     and machines (under rooms) below. */
   .idle {
-    grid-template-columns: 1.62fr 1fr;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-rows: minmax(0, 41fr) minmax(0, 59fr);
+  }
+  .bottom {
+    grid-column: 1 / -1;
+    min-height: 0;
+    display: grid;
+    /* Machines lines up with the rooms column above (one third of the row). */
+    grid-template-columns: minmax(0, 1fr) clamp(240px, 18%, 340px) calc((100% - 52px) / 3);
+    gap: 26px;
+  }
+  .bottom > :global(*),
+  .idle > :global(*) {
+    min-height: 0;
   }
   .focus {
     grid-template-columns: 0.82fr 2.18fr;
   }
-  .right,
   .side {
     min-height: 0;
     display: flex;
     flex-direction: column;
     gap: 26px;
   }
-  .side > :global(*) {
-    flex: 1;
+  .side > :global(:first-child) {
+    flex: 1.4;
   }
-  .lists {
+  .side > :global(:last-child) {
     flex: 1;
-    min-height: 0;
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 22px;
   }
   .sky {
-    padding: 22px 26px;
+    min-height: 0;
+    overflow: hidden;
+    padding: 20px 24px;
     display: flex;
     align-items: center;
     gap: 24px;

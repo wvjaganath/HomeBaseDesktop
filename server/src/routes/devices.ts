@@ -5,7 +5,7 @@ import { cookieNames, secureCookies } from '../security/principal.js';
 const hhmm = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/);
 
 export const deviceSettingsSchema = z.object({
-  startTab: z.enum(['home', 'flights', 'radar', 'calendar', 'mirror']).default('home'),
+  startTab: z.enum(['home', 'flights', 'radar', 'calendar', 'house', 'mirror']).default('home'),
   autoFocus: z.boolean().default(true),
   boardTheme: z.enum(['led', 'clean']).default('led'),
   night: z
@@ -19,7 +19,7 @@ export const deviceSettingsSchema = z.object({
   rotate: z
     .object({
       enabled: z.boolean().default(false),
-      tabs: z.array(z.enum(['home', 'flights', 'radar', 'calendar', 'mirror'])).max(5).default(['home', 'radar']),
+      tabs: z.array(z.enum(['home', 'flights', 'radar', 'calendar', 'house', 'mirror'])).max(6).default(['home', 'radar']),
       seconds: z.number().int().min(15).max(3600).default(60),
     })
     .default({ enabled: false, tabs: ['home', 'radar'], seconds: 60 }),

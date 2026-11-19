@@ -10,6 +10,8 @@ export interface HubEvents {
   items: { userIds: string[] };
   /** Calendar events refreshed for this user. */
   calendar: { userId: string };
+  /** Machines or room sensors changed (House). */
+  house: { version: number };
   /** A kiosk's settings changed or a reload was requested. */
   device: { deviceId: string; action: 'settings' | 'reload' | 'revoked' };
 }

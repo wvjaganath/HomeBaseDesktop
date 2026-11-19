@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { CALENDAR_COLORS, calendarSourceInput } from '../services/calendar.js';
-import { openReminders, pinnedNotes } from '../services/lists.js';
+import { openReminders, pinnedNotes, weekReminders } from '../services/lists.js';
 import { CALLSIGN_RE, HEX_RE, routeFits } from '../services/routeLookup.js';
 
 /** CARTO Dark Matter raster tiles (Leaflet template), keyed when a key is saved. */
@@ -58,6 +58,7 @@ export default async function dashboardRoutes(app: FastifyInstance): Promise<voi
 
   app.get('/api/lists', { preHandler: [app.requireViewer] }, async (req) => ({
     reminders: openReminders(db, req.userId),
+    week: weekReminders(db, req.userId),
     notes: pinnedNotes(db, req.userId),
   }));
 

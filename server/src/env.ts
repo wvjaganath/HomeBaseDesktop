@@ -89,6 +89,14 @@ const envSchema = z.object({
     .default('')
     .refine((v) => v === '' || net.isIP(v) !== 0, 'MIRROR_CLIENT_IP must be an IP address'),
 
+  // The bundled Govee Bluetooth listener (docker-compose's `govee` service,
+  // Docker network only). Empty = none; extra listeners go in Settings → House.
+  GOVEE_URL: z
+    .string()
+    .default('')
+    .refine((v) => v === '' || /^http:\/\/[^/\s]+\/?$/.test(v), { message: 'GOVEE_URL must look like http://govee:8686' })
+    .transform((v) => v.replace(/\/$/, '')),
+
   RADAR_ENABLED: bool.default(true),
   // Free key for CARTO's dark map tiles (https://carto.com/basemaps/apikey/).
   // Without it the map background says "API KEY REQUIRED".

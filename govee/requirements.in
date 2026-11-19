@@ -1,0 +1,4 @@
+# Govee Bluetooth listener (listener.py). Compile with the command in deploy/README.md §0.
+bleak
+govee-ble
+home-assistant-bluetooth

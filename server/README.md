@@ -46,8 +46,11 @@ passes the Origin-check CSRF guard.
 | POST | `/auth/web/reset` | — | Use a one-time reset link (made on the PC with `users.js reset-link`) |
 | POST | `/auth/web/password` | person | Change password (ends other sessions) |
 | GET | `/auth/me` | viewer | Who am I (+ screen settings) |
-| GET | `/api/stream?topics=tracker,radar,items,calendar` | viewer | Server-Sent Events |
-| GET | `/api/config` · `/api/tracker` · `/api/radar` · `/api/lists` | viewer | Dashboard data (`/api/config` includes the CARTO tile URL, home, units, why the radar is off) |
+| GET | `/api/stream?topics=tracker,radar,items,calendar,house` | viewer | Server-Sent Events (`house`: machines + room sensors summary, pushed when they change) |
+| GET | `/api/config` · `/api/tracker` · `/api/radar` · `/api/lists` | viewer | Dashboard data (`/api/config` includes the CARTO tile URL, home, units, why the radar is off; `/api/lists` includes `week`: overdue + the next 7 days of reminders) |
+| GET | `/api/house` · `/api/house/history?range=24h\|7d\|30d` | viewer | House: machines (node_exporter) and room sensors (Govee), alerts; history for the House tab |
+| GET/PUT | `/api/house-settings` · POST `/api/house-settings/test-machine` | person, rate limited | Settings → House (home-network addresses only); one test read of a machine |
+| PATCH/DELETE | `/api/house/sensors/:address` | person | Name / show on Home / forget a room sensor |
 | GET | `/api/radar/details/:hex?callsign=` | viewer | Route + airframe (adsbdb, cached) |
 | GET | `/api/calendar?from=YYYY-MM-DD&to=YYYY-MM-DD` | viewer | Expanded calendar events |
 | GET/POST/PATCH/DELETE | `/api/calendars[/:id]` | person | Google iCal sources (URLs write-only, encrypted) |
